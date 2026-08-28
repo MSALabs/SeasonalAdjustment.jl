@@ -145,25 +145,25 @@ as test fixtures rather than regenerating from scratch.
 
 ## Part 1 — wrap `x13prebuilt` (the active track)
 
-| # | What | Needs | Notes |
-|---|---|---|---|
-| W.0 | Business-day/holiday calendars (India + major markets) — generates the actual user-defined regressors W.2 passes to the binary | `BusinessDays.jl` | Confirmed working end-to-end with the real binary (the Diwali proof above) — not optional once non-Western-calendar effects are wanted. India's fixed-date holidays (Republic Day, Independence Day, Gandhi Jayanti) and Good Friday are algorithmically computable; Diwali/Holi/Eid and most of India's actual trading calendar have no closed-form date formula and need a maintained, year-keyed table sourced from the relevant exchange's own official circular (a real data-sourcing caution surfaced during research: secondary aggregator sites disagreed on one 2026 Diwali date by over two weeks — don't trust aggregators, use NSE's own circular) |
-| W.1 | Binary artifact management for `x13prebuilt` (Linux/Windows/macOS) via Julia's Artifacts system | none | `Artifacts.toml` already scaffolded with real SHA256 hashes and verified download URLs, pinned to the commit above; `git-tree-sha1` values are placeholders needing a real Julia runtime to compute (`tools/generate_artifacts.jl` is ready to run for this) |
-| W.2 | Spec-file generation (`series{}`, `x11{}`, `regression{}`, `arima{}`, `outlier{}`, user-defined regressor blocks) | W.1, W.0 | Grammar confirmed directly against the real binary, including both practical requirements noted above |
-| W.3 | Subprocess invocation + output-table parsing (`d10`/`d11`/`d12`/`d13`, SEATS' own tables) | W.2 | Real output format already confirmed from actual runs — tab-separated, `date\tvalue` per line, a `date\t------\t---...` header row to skip |
-| W.4 | Idiomatic Julia API (`x13(y; options...)`) | W.3 | Mirrors R's `seas()` ergonomics; returns a proper Julia struct (`X13Result`), not raw files |
+| # | Status | What | Needs | Notes |
+|---|---|---|---|---|
+| W.0 | ✅ Done | Business-day/holiday calendars (India + major markets) — generates the actual user-defined regressors W.2 passes to the binary | `BusinessDays.jl` | Confirmed working end-to-end with the real binary (the Diwali proof above) — not optional once non-Western-calendar effects are wanted. India's fixed-date holidays (Republic Day, Independence Day, Gandhi Jayanti) and Good Friday are algorithmically computable; Diwali/Holi/Eid and most of India's actual trading calendar have no closed-form date formula and need a maintained, year-keyed table sourced from the relevant exchange's own official circular (a real data-sourcing caution surfaced during research: secondary aggregator sites disagreed on one 2026 Diwali date by over two weeks — don't trust aggregators, use NSE's own circular). **Implemented** in `src/calendars.jl` per `handoff-w0-calendars.md`: `INDIA_NSE` calendar (fixed holidays + Good Friday, cross-validated against 3 real years, + a 2024-2026 moveable-feast table cross-checked across aggregators, honestly flagged as not yet reconciled against NSE's own circular PDF, Eid deliberately omitted as an unresolved gap), plus `trading_day_regressors`/`easter_regressor`/`custom_holiday_regressor`. |
+| W.1 | Not started | Binary artifact management for `x13prebuilt` (Linux/Windows/macOS) via Julia's Artifacts system | none | `Artifacts.toml` already scaffolded with real SHA256 hashes and verified download URLs, pinned to the commit above; `git-tree-sha1` values are placeholders needing a real Julia runtime to compute (`tools/generate_artifacts.jl` is ready to run for this) |
+| W.2 | Not started | Spec-file generation (`series{}`, `x11{}`, `regression{}`, `arima{}`, `outlier{}`, user-defined regressor blocks) | W.1, W.0 | Grammar confirmed directly against the real binary, including both practical requirements noted above |
+| W.3 | Not started | Subprocess invocation + output-table parsing (`d10`/`d11`/`d12`/`d13`, SEATS' own tables) | W.2 | Real output format already confirmed from actual runs — tab-separated, `date\tvalue` per line, a `date\t------\t---...` header row to skip |
+| W.4 | Not started | Idiomatic Julia API (`x13(y; options...)`) | W.3 | Mirrors R's `seas()` ergonomics; returns a proper Julia struct (`X13Result`), not raw files |
 
 ---
 
 ## Part 2 — native Julia engine (deferred, not abandoned)
 
-| # | What | Needs | Reference points |
-|---|---|---|---|
-| S.1 | X-11 filters (Henderson moving averages, iterative seasonal factors) | Julia's standard convolution/filtering primitives only — this is the one native-engine stage genuinely independent of everything else in this chapter | Census Bureau X-11 method documentation; Ladiray & Quenneville, *Seasonal Adjustment with the X-11 Method* (2001); real D10/D11/D12 ground truth now available from `x13prebuilt` directly (above), a categorically stronger verification target than most native-engine work gets |
-| S.2 | RegARIMA — calendar regressors (trading-day effects, Easter) | TSAnalytics.jl Stage 8.3, W.0 | X-13ARIMA-SEATS Reference Manual (US Census Bureau, 2009) |
-| S.3 | Automatic outlier detection (additive, level-shift, transitory), TRAMO-style | S.2, TSAnalytics.jl Stage 2.4 | Gómez & Maravall's TRAMO/SEATS papers |
-| S.4 | The full X-13 pipeline, orchestrating S.1–S.3 | S.1, S.2, S.3 | Census Bureau Reference Manual |
-| S.5 | SEATS canonical decomposition, Wiener-Kolmogorov filters | TSAnalytics.jl Stage 6.8, Stage 6.3, S.2 | Gómez & Maravall (1996) — still the hardest single piece across both this package and the broader TSAnalytics.jl roadmap, even with real binary output now available to check against |
+| # | Status | What | Needs | Reference points |
+|---|---|---|---|---|
+| S.1 | Not started | X-11 filters (Henderson moving averages, iterative seasonal factors) | Julia's standard convolution/filtering primitives only — this is the one native-engine stage genuinely independent of everything else in this chapter | Census Bureau X-11 method documentation; Ladiray & Quenneville, *Seasonal Adjustment with the X-11 Method* (2001); real D10/D11/D12 ground truth now available from `x13prebuilt` directly (above), a categorically stronger verification target than most native-engine work gets |
+| S.2 | Not started | RegARIMA — calendar regressors (trading-day effects, Easter) | TSAnalytics.jl Stage 8.3, W.0 | X-13ARIMA-SEATS Reference Manual (US Census Bureau, 2009) |
+| S.3 | Not started | Automatic outlier detection (additive, level-shift, transitory), TRAMO-style | S.2, TSAnalytics.jl Stage 2.4 | Gómez & Maravall's TRAMO/SEATS papers |
+| S.4 | Not started | The full X-13 pipeline, orchestrating S.1–S.3 | S.1, S.2, S.3 | Census Bureau Reference Manual |
+| S.5 | Not started | SEATS canonical decomposition, Wiener-Kolmogorov filters | TSAnalytics.jl Stage 6.8, Stage 6.3, S.2 | Gómez & Maravall (1996) — still the hardest single piece across both this package and the broader TSAnalytics.jl roadmap, even with real binary output now available to check against |
 
 ### S.1's own verified starting point — the Henderson filter formula
 
