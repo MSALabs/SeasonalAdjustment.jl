@@ -74,6 +74,30 @@ end
     @test occursin("save = (d10)", render(X13Spec(y; save = [:d10])))
 end
 
+@testset "render -- estimate{save=(rsd)} block, residuals field (W.4 addendum)" begin
+    y = collect(1.0:48.0)
+    @test !occursin("estimate", render(X13Spec(y)))  # residuals=false by default -- no block at all
+    @test occursin("estimate { save = (rsd) }", render(X13Spec(y; residuals = true)))
+end
+
+@testset "X13Spec(base::X13Spec; kwargs...) -- copy-constructor overrides only the named fields" begin
+    y = collect(1.0:48.0)
+    base = X13Spec(y; automdl = true, transform = :auto)
+    overridden = X13Spec(base; arima_model = "(0 1 1)(0 1 1)", automdl = false, transform = :log)
+    @test overridden.arima_model == "(0 1 1)(0 1 1)"
+    @test overridden.automdl == false
+    @test overridden.transform === :log
+    @test overridden.y == base.y                    # untouched fields copy through unchanged
+    @test overridden.start == base.start
+
+    @test_throws ArgumentError X13Spec(base; not_a_real_field = 1)
+
+    # the override still gets validate!'d -- an override combination
+    # that violates a real rule throws just like a fresh construction
+    # would, not silently accepted.
+    @test_throws ArgumentError X13Spec(base; arima_model = "(0 1 1)(0 1 1)", automdl = true)
+end
+
 @testset "generate_specs -- parallel matches serial" begin
     series_list = [collect(1.0:48.0) .+ i for i in 1:20]
     options_list = [(;) for _ in 1:20]

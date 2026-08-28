@@ -31,7 +31,7 @@ include("api.jl")          # W.4 -- the user-facing x13(...) entry point
 # include("native/pipeline.jl")  # S.4
 # include("native/seats.jl")     # S.5
 
-export x13, X13Result
+export x13, X13Result, static
 export x13_binary_path, x13_binary_available
 export INDIA_NSE
 export Calendar, TableCalendar
@@ -40,6 +40,6 @@ export trading_day_regressors, easter_regressor, custom_holiday_regressor
 export easter_date
 export X13Spec, render, validate!, write_spec, generate_specs
 export X13RunResult, run_x13, run_x13_batch
-export parse_table, parse_output
+export parse_table, parse_output, parse_udg
 
 end # module

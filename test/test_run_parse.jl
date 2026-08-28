@@ -23,6 +23,29 @@ end
     @test s11[1][2] ≈ 122.847234947105
 end
 
+@testset "parse_table -- regARIMA residuals (.rsd), real fixture (W.4 addendum)" begin
+    # estimate { save = (rsd) } -- a distinct spec block from x11{}/
+    # seats{}, but the same tab-separated table format, confirmed
+    # directly against a real fixture.
+    rsd_dir = joinpath(@__DIR__, "..", "handoff", "udg_and_residuals")
+    rsd = parse_table(joinpath(rsd_dir, "resid_test.rsd"))
+    @test length(rsd) == 144
+    @test rsd[1] == (Date(1949, 1), -0.00183687953416382)  # confirmed directly against the committed fixture
+end
+
+@testset "parse_udg -- real fixture, no binary needed (W.4 addendum)" begin
+    udg_dir = joinpath(@__DIR__, "..", "handoff", "udg_and_residuals")
+    udg = parse_udg(joinpath(udg_dir, "auto_test.udg"))
+    @test length(udg) == 376  # confirmed directly: the committed fixture's real line count
+    @test udg["arimamdl"] == "(0 1 1)(0 1 1)"
+    @test udg["outlier.total"] == "1"
+    @test any(k -> startswith(k, "AutoOutlier\$"), keys(udg))
+    # every line in the real fixture has exactly one colon and no
+    # duplicate keys -- confirmed directly, so a plain Dict loses
+    # nothing; this is a regression check on that finding, not a guess.
+    @test count(":", read(joinpath(udg_dir, "auto_test.udg"), String)) == 376
+end
+
 @testset "run_x13 / parse_output -- real invocation, typed result" begin
     if x13_binary_available()
         spec_path = joinpath(_VERIFICATION_DIR, "airline_baseline", "airline_official.spc")

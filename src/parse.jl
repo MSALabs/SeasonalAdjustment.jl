@@ -68,3 +68,31 @@ function parse_output(result::X13RunResult, tables::AbstractVector{Symbol})
     end
     return out
 end
+
+"""
+    parse_udg(path) -> Dict{String,String}
+
+Parses a `.udg` file -- "user diagnostics", `key: value` pairs one per
+line, colon-separated. Confirmed directly against a real fixture
+(`handoff/udg_and_residuals/auto_test.udg`, 376 lines): every line has
+exactly one colon, no duplicate keys, so a plain `Dict` loses nothing.
+Values are left as raw strings (not parsed into numbers/tuples) -- the
+`.udg` file mixes plain numbers, coefficient/se/t-stat triples, and free
+text (e.g. `"Automatic selection"`) in ways specific to each key, so a
+uniform numeric parse would either fail or silently misparse; callers
+that need a specific key as a number should `parse` it themselves.
+
+**Not produced by any spec-file setting** -- confirmed by testing every
+documented `x13ashtml` flag individually: `.udg` is only written when
+the binary is invoked with the `-S` command-line flag (see `run_x13`'s
+`udg` keyword), not by anything in `X13Spec`/`render`.
+"""
+function parse_udg(path::AbstractString)
+    d = Dict{String,String}()
+    for line in eachline(path)
+        idx = findfirst(':', line)
+        idx === nothing && continue
+        d[strip(line[1:idx-1])] = strip(line[idx+1:end])
+    end
+    return d
+end

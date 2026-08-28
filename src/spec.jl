@@ -37,6 +37,7 @@ struct X13Spec
     regression_user_name::Symbol                      # the regressor's name in the spec, default :user1
     exog::Union{Nothing,Vector{Float64}}              # a generic companion regressor (also triggers a regression block)
     aictest::Vector{Symbol}                            # e.g. [:td, :easter]
+    residuals::Bool                                     # estimate { save = (rsd) } -- regARIMA residuals, W.4 addendum
 end
 
 """
@@ -45,7 +46,17 @@ end
             maxorder=nothing, maxdiff=nothing, x11_mode=nothing, seats=false,
             save=nothing, trading=false, regression_variables=String[],
             regression_user=nothing, regression_usertype=nothing, regression_user_name=:user1,
-            exog=nothing, aictest=Symbol[]) -> X13Spec
+            exog=nothing, aictest=Symbol[], residuals=false) -> X13Spec
+
+    X13Spec(base::X13Spec; kwargs...) -> X13Spec
+
+The second form copies `base`, overriding only the fields named in
+`kwargs` (e.g. `X13Spec(base; arima_model="(0 1 1)(0 1 1)", automdl=false)`)
+-- re-[`validate!`](@ref)s the result like any other construction, since
+an override can just as easily produce an invalid combination (e.g.
+setting both `arima_model` and leaving `automdl=true`) as a fresh spec
+can. Used by [`static`](@ref) to resolve an automatic spec's `:auto`
+choices into an explicit, reproducible one.
 
 Builds and [`validate!`](@ref)s a spec from `y` (a plain numeric
 series -- [`x13`](@ref) (W.4) is responsible for bridging
@@ -62,6 +73,12 @@ binary, not hypothetical.
 
 Monthly series only (period 1-12) -- quarterly isn't exercised by any
 verified fixture in this project yet, so it isn't claimed as supported.
+
+`residuals=true` adds an `estimate { save = (rsd) }` block -- confirmed
+directly against the real binary (`handoff/udg_and_residuals/`) that
+regARIMA residuals are saved from `estimate{}`, a distinct spec block
+from `x11{}`/`seats{}`, since they're a property of the underlying
+model fit rather than the decomposition step.
 """
 function X13Spec(
     y::AbstractVector{<:Real};
@@ -85,6 +102,7 @@ function X13Spec(
     regression_user_name::Symbol = :user1,
     exog::Union{Nothing,AbstractVector{<:Real}} = nothing,
     aictest::AbstractVector{Symbol} = Symbol[],
+    residuals::Bool = false,
 )
     spec = X13Spec(
         Float64.(collect(y)),
@@ -108,9 +126,19 @@ function X13Spec(
         regression_user_name,
         exog === nothing ? nothing : Float64.(collect(exog)),
         collect(aictest),
+        residuals,
     )
     validate!(spec)
     return spec
+end
+
+function X13Spec(base::X13Spec; kwargs...)
+    fields = Dict{Symbol,Any}(fn => getfield(base, fn) for fn in fieldnames(X13Spec) if fn != :y)
+    for (k, v) in kwargs
+        haskey(fields, k) || throw(ArgumentError("X13Spec has no field :$k to override"))
+        fields[k] = v
+    end
+    return X13Spec(base.y; fields...)
 end
 
 """
@@ -228,8 +256,9 @@ end
 Renders `spec` to `.spc` text, in the same format already confirmed
 working against the real binary throughout this project's development
 (`series { ... }`, `transform { function = ... }`, `regression { ... }`,
-`arima { model = ... }`, `automdl { }`, `outlier { }`, `x11 { ... }` /
-`seats { ... }`, each block only emitted if relevant).
+`arima { model = ... }`, `automdl { }`, `outlier { }`,
+`estimate { save = (rsd) }`, `x11 { ... }` / `seats { ... }`, each block
+only emitted if relevant).
 """
 function render(spec::X13Spec)
     io = IOBuffer()
@@ -285,6 +314,7 @@ function render(spec::X13Spec)
         println(io, "automdl { $(join(parts, "  ")) }")
     end
     spec.outlier && println(io, "outlier { }")
+    spec.residuals && println(io, "estimate { save = (rsd) }")
 
     if spec.seats
         savepart = spec.save === nothing ? "s10 s11 s12 s13" : join(spec.save, " ")

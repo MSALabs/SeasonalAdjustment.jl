@@ -120,15 +120,22 @@ function _run_capture(cmd::Cmd)
 end
 
 """
-    run_x13(spec_path; binary_path=x13_binary_path()) -> X13RunResult
+    run_x13(spec_path; binary_path=x13_binary_path(), udg::Bool=false) -> X13RunResult
 
 Runs `x13ashtml` against `spec_path` (copied into a fresh scratch
 directory first, see `_prepare_run_dir`) and returns a typed
 [`X13RunResult`](@ref).
+
+`udg=true` passes the `-S` command-line flag, which is what actually
+produces the `.udg` diagnostics file -- confirmed directly by testing
+every documented `x13ashtml` flag individually (`handoff/w4-addendum-
+udg-residuals-static.md`): `.udg` is NOT controlled by anything in the
+spec file itself (`X13Spec`/`render`), only by this flag on the
+invocation. Parse the result with [`parse_udg`](@ref).
 """
-function run_x13(spec_path::AbstractString; binary_path::AbstractString = x13_binary_path())
+function run_x13(spec_path::AbstractString; binary_path::AbstractString = x13_binary_path(), udg::Bool = false)
     dir, base = _prepare_run_dir(spec_path)
-    cmd = Cmd(`$binary_path $base`; dir = dir)
+    cmd = udg ? Cmd(`$binary_path $base -S`; dir = dir) : Cmd(`$binary_path $base`; dir = dir)
     text = _run_capture(cmd)
     errors = _extract_messages(text, "ERROR:")
     warnings = _extract_messages(text, "WARNING:")

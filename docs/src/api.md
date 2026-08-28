@@ -9,6 +9,7 @@ CurrentModule = SeasonalAdjustment
 ```@docs
 x13
 X13Result
+static
 ```
 
 ## Spec generation
@@ -34,6 +35,7 @@ run_x13_batch
 ```@docs
 parse_table
 parse_output
+parse_udg
 ```
 
 ## Binary artifact management
