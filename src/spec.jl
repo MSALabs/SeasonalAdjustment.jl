@@ -25,9 +25,12 @@ struct X13Spec
     transform::Union{Nothing,Symbol}                 # :log, :auto, :none, or nothing (no transform block)
     outlier::Bool
     automdl::Bool
+    maxorder::Union{Nothing,Tuple{Int,Int}}          # automdl's (nonseasonal, seasonal) max order -- Python's maxorder; implies automdl
+    maxdiff::Union{Nothing,Tuple{Int,Int}}           # automdl's (nonseasonal, seasonal) max differencing -- Python's maxdiff; implies automdl
     x11_mode::Union{Nothing,Symbol}                  # :multiplicative, :additive, :logadditive, :pseudoadditive
     seats::Bool                                       # seats{} instead of x11{}
     save::Union{Nothing,Vector{Symbol}}               # tables to save; defaults to the standard d10-d13/s10-s13 set
+    trading::Bool                                      # Python's `trading` -- shorthand for adding "td" to regression_variables
     regression_variables::Vector{String}              # R-style passthrough (e.g. ["td", "easter[1]"])
     regression_user::Union{Nothing,Vector{Float64}}   # user-defined regressor DATA (W.0 generates this)
     regression_usertype::Union{Nothing,Symbol}        # e.g. :holiday, :td
@@ -39,20 +42,23 @@ end
 """
     X13Spec(y; start=(1980,1), title=..., order=(0,1,1), seasonal_order=nothing,
             arima_model=nothing, transform=nothing, outlier=false, automdl=false,
-            x11_mode=nothing, seats=false, save=nothing, regression_variables=String[],
+            maxorder=nothing, maxdiff=nothing, x11_mode=nothing, seats=false,
+            save=nothing, trading=false, regression_variables=String[],
             regression_user=nothing, regression_usertype=nothing, regression_user_name=:user1,
             exog=nothing, aictest=Symbol[]) -> X13Spec
 
 Builds and [`validate!`](@ref)s a spec from `y` (a plain numeric
-series -- W.4 is responsible for bridging TSAnalytics.jl-style dated
-series into this) and keyword arguments, mixing Python-style curated
-options (`transform`, `outlier`, `seasonal_order`, ...) with R-style raw
-passthrough (`regression_variables`, `arima_model`) -- see
-handoff/w2-spec.md section 2 for the design rationale. Throws
-`ArgumentError` immediately (before any subprocess is ever spawned) if
-the spec violates one of the three rules `validate!` checks, each
-confirmed directly against the real binary during this task's own
-development, not hypothetical.
+series -- [`x13`](@ref) (W.4) is responsible for bridging
+TSAnalytics.jl-style dated series into this) and keyword arguments,
+mixing Python-style curated options (`transform`, `outlier`,
+`seasonal_order`, `maxorder`, `maxdiff`, `trading` -- matching
+`statsmodels.tsa.x13.x13_arima_analysis`'s own parameter names, per
+CLAUDE.md's genuine-superset requirement) with R-style raw passthrough
+(`regression_variables`, `arima_model`) -- see handoff/w2-spec.md
+section 2 for the design rationale. Throws `ArgumentError` immediately
+(before any subprocess is ever spawned) if the spec violates one of the
+four rules `validate!` checks, each confirmed directly against the real
+binary, not hypothetical.
 
 Monthly series only (period 1-12) -- quarterly isn't exercised by any
 verified fixture in this project yet, so it isn't claimed as supported.
@@ -67,9 +73,12 @@ function X13Spec(
     transform::Union{Nothing,Symbol} = nothing,
     outlier::Bool = false,
     automdl::Bool = false,
+    maxorder::Union{Nothing,Tuple{Int,Int}} = nothing,
+    maxdiff::Union{Nothing,Tuple{Int,Int}} = nothing,
     x11_mode::Union{Nothing,Symbol} = nothing,
     seats::Bool = false,
     save::Union{Nothing,Vector{Symbol}} = nothing,
+    trading::Bool = false,
     regression_variables::AbstractVector{<:AbstractString} = String[],
     regression_user::Union{Nothing,AbstractVector{<:Real}} = nothing,
     regression_usertype::Union{Nothing,Symbol} = nothing,
@@ -87,9 +96,12 @@ function X13Spec(
         transform,
         outlier,
         automdl,
+        maxorder,
+        maxdiff,
         x11_mode,
         seats,
         save,
+        trading,
         String.(collect(regression_variables)),
         regression_user === nothing ? nothing : Float64.(collect(regression_user)),
         regression_usertype,
@@ -104,22 +116,34 @@ end
 """
     validate!(spec::X13Spec) -> X13Spec
 
-Checks the three real requirements confirmed directly against the real
+Checks four real requirements confirmed directly against the real
 `x13prebuilt` binary during this project's development (see
 handoff/w2-spec.md section 2 and development-sequence.md), throwing
 `ArgumentError` with a message that names the actual binary error it's
 preventing -- fast, native, BEFORE any subprocess round-trip:
 
-1. Series length >= 36 months (3 complete years).
-2. `regression_user` data must cover the series length plus the
+1. An explicit ARIMA model (`arima_model`/`seasonal_order`) and
+   `automdl`/`maxorder`/`maxdiff` can't both be given (found while
+   implementing W.4's `maxorder`/`maxdiff` passthrough).
+2. Series length >= 36 months (3 complete years).
+3. `regression_user` data must cover the series length plus the
    RegARIMA forecast horizon (1 year), not just the historical length.
-3. `transform = :log` is required whenever a regression block is
+4. `transform = :log` is required whenever a regression block is
    combined with `x11_mode` in `(:multiplicative, :logadditive)`.
 """
 function validate!(spec::X13Spec)
     spec.x11_mode === nothing || haskey(_X11_MODE_KEYWORDS, spec.x11_mode) || throw(ArgumentError(
         "x11_mode=:$(spec.x11_mode) isn't recognized -- must be one of " *
         "$(join(sort(string.(keys(_X11_MODE_KEYWORDS))), ", ")), or `nothing`",
+    ))
+
+    has_arima = spec.arima_model !== nothing || spec.seasonal_order !== nothing
+    has_automdl = spec.automdl || spec.maxorder !== nothing || spec.maxdiff !== nothing
+    has_arima && has_automdl && throw(ArgumentError(
+        "an explicit ARIMA model (arima_model/seasonal_order) and automdl " *
+        "(automdl/maxorder/maxdiff) can't both be given -- confirmed directly against " *
+        "the real binary's own error: \"Cannot specify arima and automdl spec in the " *
+        "same input file.\"",
     ))
 
     n = length(spec.y)
@@ -141,9 +165,7 @@ function validate!(spec::X13Spec)
         ))
     end
 
-    has_regression = !isempty(spec.regression_variables) || spec.regression_user !== nothing ||
-                      spec.exog !== nothing || !isempty(spec.aictest)
-    if has_regression && !spec.seats && spec.x11_mode in (:multiplicative, :logadditive)
+    if _has_regression(spec) && !spec.seats && spec.x11_mode in (:multiplicative, :logadditive)
         spec.transform === :log || throw(ArgumentError(
             "combining a RegARIMA model (a regression block is present) with " *
             "x11_mode=:$(spec.x11_mode) requires transform=:log -- confirmed directly " *
@@ -168,6 +190,10 @@ const _X11_MODE_KEYWORDS = Dict(
     :logadditive => "logadd",
     :pseudoadditive => "pseudoadd",
 )
+
+_has_regression(spec::X13Spec) = !isempty(spec.regression_variables) || spec.trading ||
+                                  spec.regression_user !== nothing || spec.exog !== nothing ||
+                                  !isempty(spec.aictest)
 
 function _write_wrapped(io::IO, vec::AbstractVector{<:Real}; per_line::Int = 12)
     n = length(vec)
@@ -199,12 +225,14 @@ function render(spec::X13Spec)
 
     spec.transform !== nothing && println(io, "transform { function = $(spec.transform) }")
 
-    has_regression = !isempty(spec.regression_variables) || spec.regression_user !== nothing ||
-                      spec.exog !== nothing || !isempty(spec.aictest)
-    if has_regression
+    if _has_regression(spec)
         println(io, "regression {")
-        !isempty(spec.regression_variables) &&
-            println(io, "  variables = ($(join(spec.regression_variables, " ")))")
+        # `trading` is Python's own shorthand for adding "td" to the
+        # regression variables list; deduplicated against an explicit
+        # "td" already present in regression_variables.
+        variables = spec.trading && !("td" in spec.regression_variables) ?
+            vcat(spec.regression_variables, "td") : spec.regression_variables
+        !isempty(variables) && println(io, "  variables = ($(join(variables, " ")))")
         !isempty(spec.aictest) && println(io, "  aictest = ($(join(spec.aictest, " ")))")
         if spec.regression_user !== nothing
             println(io, "  user = ($(spec.regression_user_name))")
@@ -232,7 +260,12 @@ function render(spec::X13Spec)
         println(io, "arima { model = ($p $d $q)($P $D $Q)$s }")
     end
 
-    spec.automdl && println(io, "automdl { }")
+    if spec.automdl || spec.maxorder !== nothing || spec.maxdiff !== nothing
+        parts = String[]
+        spec.maxorder !== nothing && push!(parts, "maxorder = ($(spec.maxorder[1]) $(spec.maxorder[2]))")
+        spec.maxdiff !== nothing && push!(parts, "maxdiff = ($(spec.maxdiff[1]) $(spec.maxdiff[2]))")
+        println(io, "automdl { $(join(parts, "  ")) }")
+    end
     spec.outlier && println(io, "outlier { }")
 
     if spec.seats

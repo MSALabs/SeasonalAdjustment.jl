@@ -14,8 +14,10 @@ project.
 
 ## Status
 
-Early development. See `development-sequence.md` for the full roadmap
-and current task-by-task status.
+Part 1 (the `x13prebuilt` wrapper, W.0-W.4) is complete. Part 2 (a
+from-scratch native Julia engine) hasn't started yet. See
+`development-sequence.md` for the full roadmap and current
+task-by-task status.
 
 ## Design
 
@@ -35,7 +37,7 @@ wrapper.
 ] add https://github.com/MSALabs/SeasonalAdjustment.jl
 ```
 
-## Quick example (once W.4 lands)
+## Quick example
 
 ```julia
 using SeasonalAdjustment

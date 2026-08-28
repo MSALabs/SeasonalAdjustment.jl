@@ -20,5 +20,5 @@ using Random
     include("test_artifacts.jl")   # W.1
     include("test_spec.jl")        # W.2
     include("test_run_parse.jl")   # W.3
-    # include("test_api.jl")         # W.4
+    include("test_api.jl")         # W.4
 end
