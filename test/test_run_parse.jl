@@ -54,16 +54,23 @@ end
 
 @testset "bulk: run + parse every case from W.2's real 24-case length grid" begin
     if x13_binary_available()
+        # These 24 fixtures use a bare `x11 { }` with no `save=` clause --
+        # confirmed directly (`grep -H "x11" .../w2_length_grid/*.spc`)
+        # that all 24 files are identical on this point. They were built
+        # by W.2's own handoff to probe the minimum-length boundary only,
+        # not table output: a bare x11{} makes X-13 compute the
+        # adjustment but write no output table files at all (also
+        # confirmed directly -- a successful run's scratch dir contains
+        # only .html/.spc/_err.html/_log.html, no .dNN). So this test
+        # checks only success/failure against the known boundary, not
+        # parse_output/d10 -- asserting d10 existence here would be
+        # testing something these fixtures were never built to produce.
         for i in 1:24
             spec_path = joinpath(_VERIFICATION_DIR, "w2_length_grid", "batch_$i.spc")
             result = run_x13(spec_path)
             length_ok = i > 3   # cases 1-3 are the confirmed 24-month failures
             @test result.success == length_ok
-            if result.success
-                d10 = parse_output(result, [:d10])[:d10]
-                @test length(d10) > 0
-                @test all(v -> v[2] > 0, d10)
-            else
+            if !result.success
                 @test any(e -> occursin("3 complete years", e), result.errors)
             end
         end

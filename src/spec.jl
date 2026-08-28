@@ -195,12 +195,30 @@ _has_regression(spec::X13Spec) = !isempty(spec.regression_variables) || spec.tra
                                   spec.regression_user !== nothing || spec.exog !== nothing ||
                                   !isempty(spec.aictest)
 
-function _write_wrapped(io::IO, vec::AbstractVector{<:Real}; per_line::Int = 12)
-    n = length(vec)
-    for chunk_start in 1:per_line:n
-        chunk = vec[chunk_start:min(chunk_start + per_line - 1, n)]
-        print(io, join(chunk, " "))
-        chunk_start + per_line <= n && println(io)
+# X-13 has a hard Fortran-heritage input record length limit -- confirmed
+# directly by hitting a real parse error on a wide/long series ("ERROR:
+# Input record longer than limit :         133"). Wrapping by a *fixed
+# count* of values per line (the original approach) doesn't respect this:
+# wider numeric representations (larger magnitudes, more decimal digits)
+# can push a fixed-count line past 133 characters even though a shorter
+# series with narrower values never would. Wrap by character width
+# instead. `max_width` is kept well under the confirmed 133-char limit to
+# leave margin for the caller's own line prefix (e.g. "  data = (", not
+# accounted for here since only the first wrapped line sits behind it).
+function _write_wrapped(io::IO, vec::AbstractVector{<:Real}; max_width::Int = 100)
+    isempty(vec) && return
+    line_len = 0
+    for (i, v) in enumerate(vec)
+        s = string(v)
+        sep_len = i == 1 ? 0 : 1
+        if line_len > 0 && line_len + sep_len + length(s) > max_width
+            println(io)
+            line_len = 0
+            sep_len = 0
+        end
+        sep_len > 0 && print(io, " ")
+        print(io, s)
+        line_len += sep_len + length(s)
     end
 end
 
