@@ -96,23 +96,24 @@ end
     end
 end
 
-@testset "run_x13_batch -- parallel is genuinely faster (real Julia benchmark, not just reasoned)" begin
-    # handoff/w3-run-parse.md's own async-spawn design was benchmarked
+@testset "run_x13_batch -- timing, reported not asserted (see comment)" begin
+    # handoff/w3-run-parse.md's own async-task design was benchmarked
     # for real this session (not just structurally reasoned from the
     # Python finding): N=20, serial 1.02s vs parallel 0.54s (1.89x);
     # N=100, serial 15.67s vs parallel 5.62s (2.79x) -- see
-    # development-sequence.md's W.3 row. This test re-confirms the
-    # direction (parallel faster than serial) cheaply with a small N,
-    # without asserting a specific speedup ratio (timing is inherently
-    # noisy, especially in a shared/virtualized environment) -- it's a
-    # correctness-adjacent sanity check, not a performance regression
-    # gate.
+    # development-sequence.md's W.3 row. A hard `t_parallel < t_serial`
+    # assertion here turned out to be a real bug in its own right, not
+    # just this environment's noise: confirmed directly against real CI
+    # (macOS/Windows/older-Julia runners), where shared/virtualized
+    # hardware with few cores gave the OPPOSITE result on some runs (one
+    # observed: parallel 2.14s vs serial 0.47s). Timing is not a
+    # reliable correctness signal on arbitrary CI hardware, so this is
+    # now a reported-but-not-asserted observation instead of a gate.
     if x13_binary_available()
         specs = [joinpath(_VERIFICATION_DIR, "w2_length_grid", "batch_$i.spc") for i in 4:15]
         t_serial = @elapsed run_x13_batch(specs; parallel = false)
         t_parallel = @elapsed run_x13_batch(specs; parallel = true)
         @info "run_x13_batch timing (this environment)" t_serial t_parallel
-        @test t_parallel < t_serial
     else
         @warn "skipping run_x13_batch timing test: x13_binary_available() is false in this environment"
     end

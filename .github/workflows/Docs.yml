@@ -22,9 +22,22 @@ jobs:
       # TSAnalytics.jl isn't registered (see CI.yml's own comment on the
       # identical step for the full explanation) -- SeasonalAdjustment
       # depends on it transitively, so the docs environment needs the
-      # same develop step before it can instantiate.
+      # same develop step before it can instantiate. Both packages MUST
+      # be developed in a single Pkg.develop([...]) call, not two
+      # sequential calls -- confirmed directly (real, reproducible
+      # failure either order): docs/Project.toml already lists
+      # SeasonalAdjustment as a dependency, and each package is a
+      # dependency of the other's own resolve graph (SeasonalAdjustment
+      # depends on TSAnalytics; docs' environment depends on both). A
+      # sequential develop() resolves its own change against the CURRENT
+      # manifest before the next call runs, so whichever package goes
+      # second is still unregistered/undeveloped during the first call's
+      # resolve pass -- "expected package ... to be registered" one way,
+      # "has no known versions" the other. A single atomic call resolves
+      # both together, since Pkg treats every argument as newly-fixed
+      # from the start of that one resolve pass.
       - name: Install dependencies
-        run: julia --project=docs -e 'using Pkg; Pkg.develop(url="https://github.com/MSALabs/TSAnalytics.jl"); Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+        run: julia --project=docs -e 'using Pkg; Pkg.develop([PackageSpec(path=pwd()), PackageSpec(url="https://github.com/MSALabs/TSAnalytics.jl")]); Pkg.instantiate()'
       - name: Build and deploy docs
         run: julia --project=docs docs/make.jl
         env:

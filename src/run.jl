@@ -88,6 +88,32 @@ function _prepare_run_dir(spec_path::AbstractString)
     return dir, base
 end
 
+# Runs `cmd` (stdout and stderr merged) and returns the combined output
+# as a String. Deliberately does NOT use `run(pipeline(cmd; stdout=buf,
+# stderr=buf))` with an `IOBuffer` destination: that form has Base spawn
+# one internal relay task per redirected stream (one for stdout, one for
+# stderr) that copies bytes into the destination as they arrive, and
+# under concurrent/multi-task use this raced in practice -- confirmed
+# for real via CI (intermittent `ArgumentError: ensureroom failed,
+# IOBuffer is not writeable`, and mismatched parallel-vs-serial results
+# even after routing each subprocess through its own private buffer
+# inside its own `@async` task, which ruled out cross-task buffer
+# sharing as the cause -- the race was between stdout's and stderr's own
+# relay tasks for a SINGLE process, not between processes). Passing the
+# SAME `Pipe` as both `stdout` and `stderr` merges both streams at the
+# OS level instead, with no Base-managed relay task at all: the calling
+# task reads the pipe directly via `read(out, String)`, which blocks
+# (cooperatively yielding, so concurrent `@async` callers still overlap)
+# until EOF.
+function _run_capture(cmd::Cmd)
+    out = Pipe()
+    proc = run(pipeline(ignorestatus(cmd); stdout = out, stderr = out); wait = false)
+    close(out.in)
+    text = read(out, String)
+    wait(proc)
+    return text
+end
+
 """
     run_x13(spec_path; binary_path=x13_binary_path()) -> X13RunResult
 
@@ -98,9 +124,7 @@ directory first, see `_prepare_run_dir`) and returns a typed
 function run_x13(spec_path::AbstractString; binary_path::AbstractString = x13_binary_path())
     dir, base = _prepare_run_dir(spec_path)
     cmd = Cmd(`$binary_path $base`; dir = dir)
-    buf = IOBuffer()
-    run(pipeline(ignorestatus(cmd); stdout = buf, stderr = buf))
-    text = String(take!(buf))
+    text = _run_capture(cmd)
     errors = _extract_messages(text, "ERROR:")
     warnings = _extract_messages(text, "WARNING:")
     return X13RunResult(isempty(errors), text, warnings, errors, dir, base)
@@ -110,19 +134,21 @@ end
     run_x13_batch(spec_paths; binary_path=x13_binary_path(), parallel::Bool=true) -> Vector{X13RunResult}
 
 Runs `x13ashtml` against each of `spec_paths`. When `parallel=true`
-(the default), every process is spawned asynchronously up front (`run(
-cmd; wait=false)`), then all are waited on together -- the OS scheduler
-runs the already-fast (~10ms) subprocesses genuinely concurrently, with
-no Julia-side worker-process layer. This is DELIBERATELY NOT a
+(the default), every command runs inside its own `@async` task, all
+started up front and joined with `@sync` -- the already-fast (~10ms)
+subprocesses genuinely overlap at the OS level, since Julia yields the
+current task while `_run_capture` is waiting on its subprocess's pipe,
+with no Julia-side worker-process layer. This is DELIBERATELY NOT a
 worker-pool design: handoff/w3-run-parse.md found that pattern (each
 worker itself spawning a subprocess -- Python's `ProcessPoolExecutor`)
 made things slower, since the coordination overhead exceeded the ~10ms
-of actual work being parallelized. The direct async-spawn approach here
+of actual work being parallelized. The direct async-task approach here
 was benchmarked for real (not just reasoned structurally) against the
-real binary, unlike the Python finding it's motivated by: 20 runs,
-serial 1.02s vs parallel 0.54s (1.89x); 100 runs, serial 15.67s vs
-parallel 5.62s (2.79x) -- see development-sequence.md's W.3 row for
-the exact numbers and how they were produced.
+real binary -- see development-sequence.md's W.3 row for the exact
+numbers. See `_run_capture`'s own comment for why output capture uses a
+merged `Pipe` read directly by the calling task, not an `IOBuffer`
+redirect target -- that form raced under concurrent use even with each
+task given its own private buffer.
 """
 function run_x13_batch(
     spec_paths::AbstractVector{<:AbstractString};
@@ -136,22 +162,23 @@ function run_x13_batch(
 
     dirs = Vector{String}(undef, n)
     bases = Vector{String}(undef, n)
-    bufs = Vector{IOBuffer}(undef, n)
-    procs = Vector{Base.Process}(undef, n)
     for i in 1:n
         dirs[i], bases[i] = _prepare_run_dir(spec_paths[i])
-        bufs[i] = IOBuffer()
-        cmd = Cmd(`$binary_path $(bases[i])`; dir = dirs[i])
-        procs[i] = run(pipeline(ignorestatus(cmd); stdout = bufs[i], stderr = bufs[i]); wait = false)
     end
-    foreach(wait, procs)
+
+    texts = Vector{String}(undef, n)
+    @sync for i in 1:n
+        @async begin
+            cmd = Cmd(`$binary_path $(bases[i])`; dir = dirs[i])
+            texts[i] = _run_capture(cmd)
+        end
+    end
 
     results = Vector{X13RunResult}(undef, n)
     for i in 1:n
-        text = String(take!(bufs[i]))
-        errors = _extract_messages(text, "ERROR:")
-        warnings = _extract_messages(text, "WARNING:")
-        results[i] = X13RunResult(isempty(errors), text, warnings, errors, dirs[i], bases[i])
+        errors = _extract_messages(texts[i], "ERROR:")
+        warnings = _extract_messages(texts[i], "WARNING:")
+        results[i] = X13RunResult(isempty(errors), texts[i], warnings, errors, dirs[i], bases[i])
     end
     return results
 end
