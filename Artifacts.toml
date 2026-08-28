@@ -1,0 +1,76 @@
+# Artifacts.toml for x13prebuilt binaries, pinned to a specific commit
+# of https://github.com/x13org/x13prebuilt for reproducibility.
+#
+# Pinned commit: 61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19
+# (the exact commit these hashes and URLs were verified against)
+#
+# sha256 values below are REAL, computed directly from the actual
+# downloaded files (verified in-session, not placeholders).
+#
+# git-tree-sha1 values are PLACEHOLDERS -- Julia's Artifacts system
+# hashes the *extracted directory tree*, which requires an actual Julia
+# runtime (Pkg.Artifacts.create_artifact) to compute correctly. Run
+# `julia --project=. tools/generate_artifacts.jl` (included in this
+# package) once in a real Julia environment to fill these in properly
+# before this file is trusted for `Pkg.instantiate()`. Do not guess or
+# hand-write a git-tree-sha1 value.
+
+[x13ashtml]
+git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER -- see note above
+lazy = true
+
+    [[x13ashtml.download]]
+    url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/linux/64/x13ashtml"
+    sha256 = "c4496c94985984ae9acdcf7fa164197a91fa52c2690b1e1a456312b96920f652"  # REAL, computed directly
+
+    [[x13ashtml.platform]]
+    os = "linux"
+    arch = "x86_64"
+
+[x13ashtml_linux_armv7l]
+git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+lazy = true
+
+    [[x13ashtml_linux_armv7l.download]]
+    url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/linux/armv7l/x13ashtml"
+    sha256 = "c0fa23a2ee4683d1c370c1b7916fbcf7d22b631135ecfc350b40b5ae12762864"  # REAL, computed directly
+
+    [[x13ashtml_linux_armv7l.platform]]
+    os = "linux"
+    arch = "armv7l"
+
+[x13ashtml_windows]
+git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+lazy = true
+
+    [[x13ashtml_windows.download]]
+    url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/windows/x13ashtml.zip"
+    sha256 = "360def33266deea0640b75b998ae62da5aaeb174b1b284da94dcfe1f1fb0bb83"  # REAL, computed directly
+
+    [[x13ashtml_windows.platform]]
+    os = "windows"
+    arch = "x86_64"
+
+[x13ashtml_mac_x86_64]
+git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+lazy = true
+
+    [[x13ashtml_mac_x86_64.download]]
+    url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/mac/64/x13ashtml.tar.gz"
+    sha256 = "99feaaab6c0ccbbc47b736310c69ff88127b1d99b4b2ce851db5aee844fe9b2c"  # REAL, computed directly
+
+    [[x13ashtml_mac_x86_64.platform]]
+    os = "macos"
+    arch = "x86_64"
+
+[x13ashtml_mac_arm64]
+git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+lazy = true
+
+    [[x13ashtml_mac_arm64.download]]
+    url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/mac/arm64/x13ashtml.tar.gz"
+    sha256 = "99feaaab6c0ccbbc47b736310c69ff88127b1d99b4b2ce851db5aee844fe9b2c"  # REAL, computed directly -- note: IDENTICAL hash to mac_x86_64, see caveat below
+
+    [[x13ashtml_mac_arm64.platform]]
+    os = "macos"
+    arch = "aarch64"

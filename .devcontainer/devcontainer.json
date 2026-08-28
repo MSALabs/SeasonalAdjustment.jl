@@ -1,0 +1,26 @@
+{
+  "name": "SeasonalAdjustment.jl — Claude Code autonomous sandbox",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+  "mounts": [
+    "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
+  "containerUser": "vscode",
+  "runArgs": ["--cap-drop=ALL", "--security-opt=no-new-privileges"],
+  "postCreateCommand": "mkdir -p /home/vscode/.claude && echo '{\"permissions\":{\"defaultMode\":\"bypassPermissions\"}}' > /home/vscode/.claude/settings.json",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "julialang.language-julia",
+        "anthropic.claude-code"
+      ]
+    }
+  }
+}
