@@ -38,6 +38,16 @@ good_friday(year::Integer) = easter_date(year) - Day(2)
 # express -- a per-calendar weekend set -- is new here.
 # ------------------------------------------------------------------
 
+"""
+    Calendar
+
+Root abstract type for every calendar in this package -- a QuantLib-
+style abstraction (`isbusinessday`/`isholiday`/`isweekend`/`adjust`/
+`advance`/`businessdaysbetween`/`holidaylist`), deliberately its own
+hierarchy rather than a `BusinessDays.HolidayCalendar` subtype (see the
+comment above this type for why). [`TableCalendar`](@ref) is currently
+the only concrete subtype.
+"""
 abstract type Calendar end
 
 """
@@ -54,8 +64,24 @@ struct TableCalendar <: Calendar
     weekend::Set{Int}                                       # dayofweek values counted as weekend
 end
 
+"""
+    isweekend(cal::Calendar, wd::Integer) -> Bool
+
+`true` if weekday `wd` (a `Dates.dayofweek` value, Monday=1..Sunday=7)
+is in `cal`'s own weekend set. Extends `BusinessDays.isweekend`, whose
+own single-argument `isweekend(dt::Date)` method hardcodes Saturday/
+Sunday for every calendar -- this per-calendar method is exactly the
+capability [`Calendar`](@ref)'s own docstring explains BusinessDays.jl
+can't express.
+"""
 BusinessDays.isweekend(cal::Calendar, wd::Integer) = wd in cal.weekend
 
+"""
+    isholiday(cal::TableCalendar, d::Date) -> Bool
+
+`true` if `d` matches one of `cal`'s fixed-date holiday rules or its
+year-keyed moveable-holiday table. Extends `BusinessDays.isholiday`.
+"""
 function BusinessDays.isholiday(cal::TableCalendar, d::Date)
     y = year(d)
     any(f -> f(y) == d, cal.fixed_holidays) && return true
@@ -215,7 +241,7 @@ const NSE_MOVEABLE_HOLIDAYS = Dict{Int,Vector{Tuple{Date,String}}}(
     INDIA_NSE::TableCalendar
 
 The India NSE trading calendar. Weekend = Saturday/Sunday (`Set([6,7])`
-in `Dates.dayofweek` terms). See [`NSE_MOVEABLE_HOLIDAYS`](@ref)'s own
+in `Dates.dayofweek` terms). See `NSE_MOVEABLE_HOLIDAYS`'s own
 docstring-adjacent comment for the honest gaps in the moveable-feast
 table.
 """
@@ -231,7 +257,7 @@ end
     diwali_date(year) -> Union{Date,Nothing}
 
 The Diwali Laxmi Pujan date for `year`, or `nothing` if `year` isn't in
-[`NSE_MOVEABLE_HOLIDAYS`](@ref). A `holiday_years_present`-shaped
+`NSE_MOVEABLE_HOLIDAYS`. A `holiday_years_present`-shaped
 callback for [`custom_holiday_regressor`](@ref).
 """
 diwali_date(year::Integer) = _find_holiday(year, "laxmi pujan")
@@ -240,7 +266,7 @@ diwali_date(year::Integer) = _find_holiday(year, "laxmi pujan")
     holi_date(year) -> Union{Date,Nothing}
 
 The Holi date for `year`, or `nothing` if `year` isn't in
-[`NSE_MOVEABLE_HOLIDAYS`](@ref). A `holiday_years_present`-shaped
+`NSE_MOVEABLE_HOLIDAYS`. A `holiday_years_present`-shaped
 callback for [`custom_holiday_regressor`](@ref).
 """
 holi_date(year::Integer) = _find_holiday(year, "holi")

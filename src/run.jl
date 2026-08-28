@@ -92,7 +92,7 @@ end
     run_x13(spec_path; binary_path=x13_binary_path()) -> X13RunResult
 
 Runs `x13ashtml` against `spec_path` (copied into a fresh scratch
-directory first, see [`_prepare_run_dir`](@ref)) and returns a typed
+directory first, see `_prepare_run_dir`) and returns a typed
 [`X13RunResult`](@ref).
 """
 function run_x13(spec_path::AbstractString; binary_path::AbstractString = x13_binary_path())

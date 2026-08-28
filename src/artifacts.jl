@@ -72,7 +72,7 @@ artifact directory, since each platform's archive has a different
 internal layout (confirmed directly, see handoff/w1-artifacts.md):
 
 - Linux: a bare executable file at the artifact root (`x13ashtml`),
-  installed via [`_linux_x13_artifact_dir`](@ref) since it isn't an
+  installed via `_linux_x13_artifact_dir` since it isn't an
   archive Julia's normal installer can handle.
 - Windows: `x13ashtml/x13ashtml.exe` (a subfolder), a real zip archive
   Julia's normal `@artifact_str` handles directly.

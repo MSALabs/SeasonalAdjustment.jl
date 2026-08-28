@@ -50,7 +50,7 @@ concrete "genuine superset of R's `seas()` and Python's
 `x13_arima_analysis()`" signature CLAUDE.md requires, not just a naming
 exercise -- see handoff/w4-api.md section "The API design requirement."
 
-`y` accepts anything [`tsvalues`](@ref) does. `index` (defaulting to
+`y` accepts anything `tsvalues` does. `index` (defaulting to
 `tsindex(y)`, which is `nothing` for a plain vector and most sliced
 containers -- pass it explicitly the same way other TSAnalytics.jl
 functions ask for `index=`) is used to infer `start` when neither it

@@ -1,5 +1,8 @@
 # SeasonalAdjustment.jl
 
+[![docs latest](https://img.shields.io/badge/docs-dev-blue.svg)](https://msalabs.github.io/SeasonalAdjustment.jl/dev/)
+[![CI](https://github.com/MSALabs/SeasonalAdjustment.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/MSALabs/SeasonalAdjustment.jl/actions/workflows/CI.yml)
+
 Official-statistics-grade seasonal adjustment for Julia — X-11,
 RegARIMA, and SEATS — built on the same trusted, freely-redistributable
 Census Bureau binary ([`x13prebuilt`](https://github.com/x13org/x13prebuilt))
