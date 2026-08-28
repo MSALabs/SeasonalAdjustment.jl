@@ -38,5 +38,8 @@ export Calendar, TableCalendar
 export isbusinessday, isholiday, isweekend, adjust, advance, businessdaysbetween, holidaylist
 export trading_day_regressors, easter_regressor, custom_holiday_regressor
 export easter_date
+export X13Spec, render, validate!, write_spec, generate_specs
+export X13RunResult, run_x13, run_x13_batch
+export parse_table, parse_output
 
 end # module
