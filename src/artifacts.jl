@@ -183,6 +183,35 @@ function x13_binary_path()
 end
 
 """
+    _spawn_retrying_eacces(f::Function; max_attempts=6, initial_delay=0.25)
+
+Calls `f()` (expected to spawn a subprocess), retrying with a short
+exponential backoff if it throws an `IOError` whose message contains
+"permission denied" -- confirmed for real via CI, not a hypothetical:
+a genuinely fresh install on Windows CI failed with `IOError: could not
+spawn ... permission denied (EACCES)` on the very first invocation of a
+just-extracted `.exe`, a well-documented pattern where Windows Defender
+(or another real-time AV) briefly locks a freshly-written executable
+while scanning it. Any other exception, or a `max_attempts`-th
+consecutive EACCES, propagates immediately -- this only smooths over
+the specific transient case, it doesn't mask a genuine, persistent
+inability to execute the binary.
+"""
+function _spawn_retrying_eacces(f::Function; max_attempts::Int = 6, initial_delay::Real = 0.25)
+    delay = initial_delay
+    for attempt in 1:max_attempts
+        try
+            return f()
+        catch e
+            is_eacces = e isa Base.IOError && occursin("permission denied", lowercase(e.msg))
+            (is_eacces && attempt < max_attempts) || rethrow()
+            sleep(delay)
+            delay *= 2
+        end
+    end
+end
+
+"""
     x13_binary_available() -> Bool
 
 `true` if the x13prebuilt binary can be resolved AND actually invoked
@@ -203,7 +232,10 @@ function x13_binary_available()
         # a usage error) -- that's still "available", so ignorestatus
         # the exit code and only treat a genuine spawn failure (missing
         # file, not executable, permission denied) as unavailable.
-        run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
+        # Retries transient EACCES (see `_spawn_retrying_eacces`).
+        _spawn_retrying_eacces() do
+            run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
+        end
         return true
     catch e
         # A bare `catch; return false` here previously swallowed the

@@ -39,6 +39,30 @@
 # revisited if/when x13org/x13prebuilt ships a genuine native arm64
 # build.
 #
+# MACOS git-tree-sha1 CORRECTION (found only via real CI, not caught
+# locally -- this session has no Mac to test on): the git-tree-sha1
+# below was originally computed once (via `tools/generate_artifacts.jl`
+# in a non-Mac environment) and reused for BOTH platform entries on the
+# strength of the byte-identical-tarball finding above -- reasonable in
+# principle (identical input should extract to an identical tree), but
+# never actually verified against Julia's own native `@artifact_str`
+# extraction path on real macOS, which is what actually matters. GitHub
+# Actions' `macos-latest` runners are Apple Silicon (arm64) by default
+# now, so the very first real exercise of this artifact via CI (this
+# session) hit a genuine `Tree Hash Mismatch!` on the arm64 job --
+# expected `b014791cb9413683ee2d468e930f68bcec187a57`, real
+# Julia-native-extraction result `bdb3303eadb041eeabb849a0c9e24f26004b6fb2`.
+# The raw file sha256 was independently re-confirmed identical for both
+# URLs (ruling out a bad download), so the discrepancy is specifically
+# in how the tree-hash was originally computed vs. how Julia's real
+# artifact installer extracts it -- the same class of tool-extraction
+# mismatch already seen once for Windows (see the WINDOWS note above).
+# Fixed by using the real, CI-confirmed value for BOTH entries, since
+# that's the only one actually verified against real Julia-native
+# extraction; the x86_64 entry's original value was equally unverified
+# (no x86_64 macOS CI runner currently exercises it either) and is not
+# assumed correct just because it happened not to be caught yet.
+#
 # WINDOWS git-tree-sha1 NOTE (a real bug found only once this package
 # was actually pushed and run through CI, not caught by local testing
 # alone): the value originally here was computed by extracting the
@@ -88,7 +112,7 @@ arch = "x86_64"
     sha256 = "360def33266deea0640b75b998ae62da5aaeb174b1b284da94dcfe1f1fb0bb83"
 
 [[x13ashtml]]
-git-tree-sha1 = "b014791cb9413683ee2d468e930f68bcec187a57"
+git-tree-sha1 = "bdb3303eadb041eeabb849a0c9e24f26004b6fb2"
 lazy = true
 os = "macos"
 arch = "x86_64"
@@ -98,7 +122,7 @@ arch = "x86_64"
     sha256 = "99feaaab6c0ccbbc47b736310c69ff88127b1d99b4b2ce851db5aee844fe9b2c"
 
 [[x13ashtml]]
-git-tree-sha1 = "b014791cb9413683ee2d468e930f68bcec187a57"
+git-tree-sha1 = "bdb3303eadb041eeabb849a0c9e24f26004b6fb2"
 lazy = true
 os = "macos"
 arch = "aarch64"

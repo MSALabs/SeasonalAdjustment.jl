@@ -104,14 +104,19 @@ end
 # OS level instead, with no Base-managed relay task at all: the calling
 # task reads the pipe directly via `read(out, String)`, which blocks
 # (cooperatively yielding, so concurrent `@async` callers still overlap)
-# until EOF.
+# until EOF. The spawn itself is wrapped in `_spawn_retrying_eacces`
+# (see its own docstring in artifacts.jl): a transient permission-denied
+# spawn failure on a just-extracted executable, confirmed for real on
+# Windows CI, not hypothetical.
 function _run_capture(cmd::Cmd)
-    out = Pipe()
-    proc = run(pipeline(ignorestatus(cmd); stdout = out, stderr = out); wait = false)
-    close(out.in)
-    text = read(out, String)
-    wait(proc)
-    return text
+    return _spawn_retrying_eacces() do
+        out = Pipe()
+        proc = run(pipeline(ignorestatus(cmd); stdout = out, stderr = out); wait = false)
+        close(out.in)
+        text = read(out, String)
+        wait(proc)
+        return text
+    end
 end
 
 """
