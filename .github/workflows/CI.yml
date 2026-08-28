@@ -18,5 +18,17 @@ jobs:
         with:
           version: ${{ matrix.julia-version }}
       - uses: julia-actions/cache@v2
+      # TSAnalytics.jl isn't registered in Julia's General registry --
+      # Pkg.instantiate() has no way to know where to get it from just
+      # from Project.toml's [deps] name+UUID entry, and errors "expected
+      # package TSAnalytics [...] to be registered". Confirmed directly:
+      # every CI run failed here from the very first commit, unnoticed
+      # until this repo was actually pushed and its Actions runs checked
+      # -- local development always used a manually Pkg.develop'd path
+      # to a local checkout, which has no equivalent in a fresh CI
+      # runner. Development happens on the public MSALabs/TSAnalytics.jl
+      # repo directly (no registry entry needed for this to work).
+      - name: Develop unregistered TSAnalytics.jl dependency
+        run: julia --project=. -e 'using Pkg; Pkg.develop(url="https://github.com/MSALabs/TSAnalytics.jl")'
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1

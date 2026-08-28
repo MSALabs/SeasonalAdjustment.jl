@@ -19,6 +19,7 @@
 using Pkg.Artifacts
 using SHA
 using Downloads
+using p7zip_jll
 
 const COMMIT = "61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19"
 const BASE = "https://raw.githubusercontent.com/x13org/x13prebuilt/$COMMIT"
@@ -67,7 +68,17 @@ for (name, relpath, expected_sha, fname) in PLATFORMS
         dest = joinpath(artifact_dir, fname)
         cp(tmpfile, dest)
         if endswith(fname, ".zip")
-            run(`unzip -q $dest -d $artifact_dir`)
+            # p7zip_jll, not system `unzip` -- confirmed directly that
+            # they produce DIFFERENT git-tree-sha1 values for the exact
+            # same byte-identical zip (almost certainly a difference in
+            # restored executable-permission metadata), only caught once
+            # this package was actually pushed through CI. src/artifacts.jl's
+            # own runtime code installs the Windows artifact via
+            # p7zip_jll (Julia's own artifact installer can't unpack
+            # plain zip at all -- see its docstring), so this script
+            # must use the same tool to produce a hash that matches what
+            # every real installation actually gets.
+            run(`$(p7zip_jll.p7zip()) x $dest -o$artifact_dir -y`)
         elseif endswith(fname, ".tar.gz")
             # NOTE: this line assumes a POSIX `tar` on PATH (true on
             # Linux/macOS, and inside this project's Linux devcontainer

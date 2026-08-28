@@ -38,6 +38,24 @@
 # resolution doesn't simply fail on arm64 Macs, but this should be
 # revisited if/when x13org/x13prebuilt ships a genuine native arm64
 # build.
+#
+# WINDOWS git-tree-sha1 NOTE (a real bug found only once this package
+# was actually pushed and run through CI, not caught by local testing
+# alone): the value originally here was computed by extracting the
+# Windows zip with `unzip` (git-bash, used by `tools/generate_artifacts.jl`
+# at the time) -- but Julia's own artifact installer cannot unpack plain
+# zip files at all (confirmed directly from Pkg's source: it always
+# pipes `7z x -so` into `Tar.extract`, which only works for tar-based
+# archives), so `src/artifacts.jl` installs the Windows artifact
+# manually via `p7zip_jll` instead. `unzip` and `p7zip_jll` produce
+# DIFFERENT git-tree-sha1 values for the byte-identical zip (almost
+# certainly a difference in how each restores the zip's stored
+# executable-permission metadata) -- confirmed directly, not assumed.
+# The value below is the one `p7zip_jll` actually produces, since that's
+# what every real installation now goes through; `tools/generate_artifacts.jl`
+# was updated to use the same extraction method for exactly this reason.
+
+
 
 [[x13ashtml]]
 git-tree-sha1 = "d26789ab28482a93b867e29a228a64853eb99216"
@@ -60,7 +78,7 @@ arch = "armv7l"
     sha256 = "c0fa23a2ee4683d1c370c1b7916fbcf7d22b631135ecfc350b40b5ae12762864"
 
 [[x13ashtml]]
-git-tree-sha1 = "b6e56a2dfd04f6d126e8a7b1b3ab7281bc1f8038"
+git-tree-sha1 = "0cb3bac7365420b88600b0bb4ea653488933a911"
 lazy = true
 os = "windows"
 arch = "x86_64"

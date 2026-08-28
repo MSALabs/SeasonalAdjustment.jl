@@ -3,11 +3,71 @@
 # W.1 -- binary artifact management for x13prebuilt (Linux, Windows,
 # macOS) via Julia's Artifacts system. See handoff/w1-artifacts.md for
 # the verified per-platform archive layouts and the findings below,
-# each confirmed directly (empirically tested), not assumed.
+# each confirmed directly (empirically tested against a genuinely
+# fresh, never-before-populated artifact cache -- not just re-finding
+# a copy this package's own tooling had already placed there, an
+# earlier blind spot in this task's own verification caught and
+# corrected while pushing this to CI for the first time), not assumed.
 
 import Pkg
 import SHA
 import Downloads
+import p7zip_jll
+
+"""
+    _download_verified(dl::Dict) -> String
+
+Downloads `dl["url"]`, verifies it against `dl["sha256"]` (the same
+hash already declared in Artifacts.toml), and returns the downloaded
+file's path. Throws a clear error naming both hashes on a mismatch,
+refusing to install anything that doesn't match.
+"""
+function _download_verified(dl::Dict)
+    tmpfile = Downloads.download(dl["url"])
+    actual_sha256 = bytes2hex(open(SHA.sha256, tmpfile))
+    actual_sha256 == dl["sha256"] || error(
+        "SHA256 mismatch downloading $(dl["url"]) -- expected $(dl["sha256"]), got " *
+        "$actual_sha256. Refusing to install a binary that doesn't match the hash " *
+        "declared in Artifacts.toml.",
+    )
+    return tmpfile
+end
+
+"""
+    _custom_artifact_dir(unpack!, platform) -> String
+
+Shared scaffolding for the two platforms whose upstream archive format
+Julia's own `@artifact_str`/`ensure_artifact_installed` can't install
+automatically (see `_linux_x13_artifact_dir`/
+`_windows_x13_artifact_dir` for which, and why, each). Resolves
+`x13ashtml`'s meta for `platform`, and if not already installed,
+downloads + sha256-verifies it, hands the result to `unpack!(tmpfile,
+dir)` inside `create_artifact`, and confirms the resulting tree hash
+matches the one already declared in Artifacts.toml before returning the
+artifact's directory. `unpack!` first (not a keyword) so callers can
+use `do`-block syntax, which always passes the block as the first
+positional argument.
+"""
+function _custom_artifact_dir(unpack!, platform::Base.BinaryPlatforms.AbstractPlatform)
+    toml = find_artifacts_toml(@__DIR__)
+    toml === nothing && error("could not locate Artifacts.toml relative to $(@__DIR__)")
+    meta = artifact_meta("x13ashtml", toml; platform = platform)
+    meta === nothing && error("no x13ashtml artifact entry matches $platform in $toml")
+    hash = Base.SHA1(meta["git-tree-sha1"])
+    if !artifact_exists(hash)
+        tmpfile = _download_verified(only(meta["download"]))
+        computed_hash = Pkg.Artifacts.create_artifact() do dir
+            unpack!(tmpfile, dir)
+        end
+        computed_hash == hash || error(
+            "the freshly-downloaded x13prebuilt binary's computed git-tree-sha1 " *
+            "($computed_hash) doesn't match the one declared in Artifacts.toml " *
+            "($hash) -- something is inconsistent between the declared artifact " *
+            "and what was actually installed.",
+        )
+    end
+    return artifact_path(hash)
+end
 
 """
     _linux_x13_artifact_dir() -> String
@@ -18,49 +78,52 @@ artifact and returns its directory.
 Upstream serves the Linux binary as a BARE raw executable file, not an
 archive (confirmed directly against the x13org/x13prebuilt repo at the
 pinned commit -- no tar.gz/zip alternative exists for Linux). Julia's
-normal automatic artifact installer (what `@artifact_str`/LazyArtifacts
-uses under the hood) only knows how to unpack recognized archive
-formats and hard-errors on a bare file (`"Is not archive"`) -- hit
-directly while preparing this task, not a hypothetical concern. This
-function installs it manually instead: download, verify against the
-same sha256 already declared in Artifacts.toml, then hand the result to
-`create_artifact`, mirroring exactly what `tools/generate_artifacts.jl`
-does for a maintainer -- but lazily, at first actual use, matching this
-artifact's own `lazy = true` declaration.
-
-Windows (zip) and macOS (tar.gz) don't need this -- both are real
-archives Julia's normal installer already handles correctly (confirmed
-directly too, see handoff/w1-artifacts.md).
+normal automatic artifact installer only knows how to unpack recognized
+archive formats and hard-errors on a bare file (`"Is not archive"`) --
+hit directly while preparing this task, not a hypothetical concern.
+Installs it manually instead, via `_custom_artifact_dir`.
 """
 function _linux_x13_artifact_dir()
-    toml = find_artifacts_toml(@__DIR__)
-    toml === nothing && error("could not locate Artifacts.toml relative to $(@__DIR__)")
-    meta = artifact_meta("x13ashtml", toml)
-    meta === nothing && error("no x13ashtml artifact entry matches this platform in $toml")
-    hash = Base.SHA1(meta["git-tree-sha1"])
-    if !artifact_exists(hash)
-        dl = only(meta["download"])
-        tmpfile = Downloads.download(dl["url"])
-        actual_sha256 = bytes2hex(open(SHA.sha256, tmpfile))
-        actual_sha256 == dl["sha256"] || error(
-            "SHA256 mismatch downloading the x13prebuilt Linux binary from " *
-            "$(dl["url"]) -- expected $(dl["sha256"]), got $actual_sha256. " *
-            "Refusing to install a binary that doesn't match the hash " *
-            "declared in Artifacts.toml.",
-        )
-        computed_hash = Pkg.Artifacts.create_artifact() do dir
-            dest = joinpath(dir, "x13ashtml")
-            cp(tmpfile, dest)
-            chmod(dest, 0o755)
-        end
-        computed_hash == hash || error(
-            "the freshly-downloaded x13prebuilt Linux binary's computed " *
-            "git-tree-sha1 ($computed_hash) doesn't match the one declared " *
-            "in Artifacts.toml ($hash) -- something is inconsistent between " *
-            "the declared artifact and what was actually installed.",
-        )
+    platform = Base.BinaryPlatforms.Platform("x86_64", "linux")
+    return _custom_artifact_dir(platform) do tmpfile, dir
+        dest = joinpath(dir, "x13ashtml")
+        cp(tmpfile, dest)
+        chmod(dest, 0o755)
     end
-    return artifact_path(hash)
+end
+
+"""
+    _windows_x13_artifact_dir() -> String
+
+Resolves (installing on first use if needed) the Windows x13prebuilt
+artifact and returns its directory.
+
+Upstream serves the Windows binary as a plain `.zip`. This looked like
+it should be exactly what Julia's normal `@artifact_str` installer
+handles -- and W.1's original verification treated it as confirmed
+working, but that check only ever re-found a copy this package's own
+`tools/generate_artifacts.jl` had already placed in the local artifact
+cache; the genuinely fresh download path was never actually exercised
+until pushing to CI surfaced it failing for real. **Julia's built-in
+unpacker cannot extract plain zip files at all**, confirmed directly
+from Pkg's own source (`Pkg.PlatformEngines.unpack`, stdlib
+`PlatformEngines.jl`): it always pipes `7z x <archive> -so` into
+`Tar.extract`, which only produces a valid result for tar-based
+archives (`.tar`/`.tar.gz`/...), where 7z's `-so` reveals an inner tar
+stream. For a plain zip -- no tar layer inside at all -- that pipe
+produces the raw extracted file bytes, which `Tar.extract` then fails
+to parse (`"This does not appear to be a TAR file/stream"`), confirmed
+directly by hitting exactly that error against a genuinely fresh
+artifact cache. Installs it manually instead, via `p7zip_jll` (the same
+7-Zip binary Pkg itself already depends on and uses internally) invoked
+as a normal, complete zip extraction (`7z x <archive> -o<dir> -y`), not
+routed through the tar-only pipe.
+"""
+function _windows_x13_artifact_dir()
+    platform = Base.BinaryPlatforms.Platform("x86_64", "windows")
+    return _custom_artifact_dir(platform) do tmpfile, dir
+        run(`$(p7zip_jll.p7zip()) x $tmpfile -o$dir -y`)
+    end
 end
 
 """
@@ -74,21 +137,23 @@ internal layout (confirmed directly, see handoff/w1-artifacts.md):
 - Linux: a bare executable file at the artifact root (`x13ashtml`),
   installed via `_linux_x13_artifact_dir` since it isn't an
   archive Julia's normal installer can handle.
-- Windows: `x13ashtml/x13ashtml.exe` (a subfolder), a real zip archive
-  Julia's normal `@artifact_str` handles directly.
+- Windows: `x13ashtml/x13ashtml.exe` (a subfolder), installed via
+  `_windows_x13_artifact_dir` -- a real zip archive, but one
+  Julia's normal installer *also* can't handle (see that function's own
+  docstring for the real bug this surfaced).
 - macOS: `x13ashtml/bin/x13ashtml`, dynamically linked against three
   `.dylib` files in the sibling `x13ashtml/lib/` directory -- this
   function asserts that directory and those specific files are present
   and throws a clear error if not, rather than let a broken extraction
-  fail silently at first actual use. A real tar.gz Julia's normal
-  installer also handles directly.
+  fail silently at first actual use. A real tar.gz, which Julia's
+  normal installer genuinely does handle correctly (confirmed directly
+  against a fresh artifact cache, unlike the Windows case above).
 """
 function x13_binary_path()
     if Sys.islinux()
         return joinpath(_linux_x13_artifact_dir(), "x13ashtml")
     elseif Sys.iswindows()
-        dir = @artifact_str("x13ashtml")
-        return joinpath(dir, "x13ashtml", "x13ashtml.exe")
+        return joinpath(_windows_x13_artifact_dir(), "x13ashtml", "x13ashtml.exe")
     elseif Sys.isapple()
         dir = @artifact_str("x13ashtml")
         root = joinpath(dir, "x13ashtml")

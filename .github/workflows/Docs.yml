@@ -19,8 +19,12 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v2
+      # TSAnalytics.jl isn't registered (see CI.yml's own comment on the
+      # identical step for the full explanation) -- SeasonalAdjustment
+      # depends on it transitively, so the docs environment needs the
+      # same develop step before it can instantiate.
       - name: Install dependencies
-        run: julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+        run: julia --project=docs -e 'using Pkg; Pkg.develop(url="https://github.com/MSALabs/TSAnalytics.jl"); Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - name: Build and deploy docs
         run: julia --project=docs docs/make.jl
         env:
