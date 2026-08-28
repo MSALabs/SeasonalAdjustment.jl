@@ -84,7 +84,16 @@ end
                     run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
                     "invocation actually succeeded on retry"
                 catch e
-                    sprint(showerror, e)
+                    code = e isa Base.IOError ? e.code : "n/a"
+                    st = try; string(stat(path)); catch e2; "stat failed: $e2"; end
+                    chmod_result = try
+                        chmod(path, 0o755)
+                        run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
+                        "invocation succeeded AFTER chmod(0o755)"
+                    catch e3
+                        "still failed after chmod(0o755): $(sprint(showerror, e3))"
+                    end
+                    "$(sprint(showerror, e)) | code=$code | stat=$st | $chmod_result"
                 end
             end
             "path=$path isfile=$exists invoke_error=$invoke_err"
