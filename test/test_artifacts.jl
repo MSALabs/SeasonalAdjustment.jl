@@ -67,6 +67,33 @@ end
     # handoff/w1-artifacts.md -- it should pass in every environment
     # except this one, and a regression here is worth seeing even where
     # this specific machine can't clear it.
+    #
+    # TEMPORARY diagnostic (remove once macOS/Windows CI failures here
+    # are root-caused): the GitHub Actions log-download API needs an
+    # admin-scoped token this session doesn't have, so the only way to
+    # see *why* x13_binary_available() is false on real CI is to have
+    # the failure surface as a workflow-command annotation, which is
+    # readable anonymously via the public check-runs API.
+    if !x13_binary_available() && get(ENV, "GITHUB_ACTIONS", "false") == "true"
+        detail = try
+            path = x13_binary_path()
+            exists = isfile(path)
+            invoke_err = "n/a (isfile was false)"
+            if exists
+                invoke_err = try
+                    run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
+                    "invocation actually succeeded on retry"
+                catch e
+                    sprint(showerror, e)
+                end
+            end
+            "path=$path isfile=$exists invoke_error=$invoke_err"
+        catch e
+            "x13_binary_path() itself threw: $(sprint(showerror, e))"
+        end
+        msg = replace(detail, "\n" => " | ", "\r" => "")
+        println("::warning::x13_binary_available() diagnostic: $msg")
+    end
     @test x13_binary_available()
 end
 
