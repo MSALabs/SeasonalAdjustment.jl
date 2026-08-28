@@ -63,46 +63,16 @@ end
     # See the module-level comment above: expected to fail specifically
     # in this sandboxed session on native Windows (confirmed sandbox
     # execution restriction, not a resolution bug); confirmed passing
-    # on real Linux via WSL. Kept as a hard assertion per
-    # handoff/w1-artifacts.md -- it should pass in every environment
-    # except this one, and a regression here is worth seeing even where
-    # this specific machine can't clear it.
-    #
-    # TEMPORARY diagnostic (remove once macOS/Windows CI failures here
-    # are root-caused): the GitHub Actions log-download API needs an
-    # admin-scoped token this session doesn't have, so the only way to
-    # see *why* x13_binary_available() is false on real CI is to have
-    # the failure surface as a workflow-command annotation, which is
-    # readable anonymously via the public check-runs API.
-    if !x13_binary_available() && get(ENV, "GITHUB_ACTIONS", "false") == "true"
-        detail = try
-            path = x13_binary_path()
-            exists = isfile(path)
-            invoke_err = "n/a (isfile was false)"
-            if exists
-                invoke_err = try
-                    run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
-                    "invocation actually succeeded on retry"
-                catch e
-                    code = e isa Base.IOError ? e.code : "n/a"
-                    st = try; string(stat(path)); catch e2; "stat failed: $e2"; end
-                    chmod_result = try
-                        chmod(path, 0o755)
-                        run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
-                        "invocation succeeded AFTER chmod(0o755)"
-                    catch e3
-                        "still failed after chmod(0o755): $(sprint(showerror, e3))"
-                    end
-                    "$(sprint(showerror, e)) | code=$code | stat=$st | $chmod_result"
-                end
-            end
-            "path=$path isfile=$exists invoke_error=$invoke_err"
-        catch e
-            "x13_binary_path() itself threw: $(sprint(showerror, e))"
-        end
-        msg = replace(detail, "\n" => " | ", "\r" => "")
-        println("::warning::x13_binary_available() diagnostic: $msg")
-    end
+    # on real Linux via WSL, and on real macOS/Windows CI once two real
+    # bugs were fixed -- a macOS artifact tree-hash that was never
+    # actually verified against Julia-native extraction on real
+    # hardware, and a transient Windows `EACCES` on a just-extracted
+    # exe (see `_spawn_retrying_eacces` in src/artifacts.jl), both
+    # root-caused via a temporary diagnostic that briefly lived here
+    # (removed once real CI evidence was in hand). Kept as a hard
+    # assertion per handoff/w1-artifacts.md -- it should pass in every
+    # environment except this one, and a regression here is worth
+    # seeing even where this specific machine can't clear it.
     @test x13_binary_available()
 end
 
