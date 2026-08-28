@@ -69,6 +69,20 @@ for (name, relpath, expected_sha, fname) in PLATFORMS
         if endswith(fname, ".zip")
             run(`unzip -q $dest -d $artifact_dir`)
         elseif endswith(fname, ".tar.gz")
+            # NOTE: this line assumes a POSIX `tar` on PATH (true on
+            # Linux/macOS, and inside this project's Linux devcontainer
+            # -- see CLAUDE.md/development-sequence.md). Running this
+            # script directly on native Windows (outside the
+            # devcontainer/WSL) hits Windows' own bundled tar.exe, which
+            # is a cut-down build that misparses `C:\Users\...` as a
+            # remote host:path spec and also doesn't support
+            # `--force-local` to fix that -- hit directly while
+            # preparing this task's handoff. Not fixed here since it's
+            # not this script's intended execution environment; the
+            # devcontainer/CI runners this script is meant for don't hit
+            # it. If you must run this on native Windows, extract the
+            # macOS tarball with a real POSIX tar (e.g. Git for
+            # Windows' `/usr/bin/tar`) and adapt this block accordingly.
             run(`tar -xzf $dest -C $artifact_dir`)
         else
             chmod(dest, 0o755)  # linux binaries need +x

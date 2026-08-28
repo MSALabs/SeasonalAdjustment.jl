@@ -9,6 +9,15 @@ The Box-Jenkins airline passengers series (1949-1960), plain X-11,
 no custom regressors. Real D10/D11/D12/D13 tables, 144 months each.
 Use this as the primary W.1-W.4 regression fixture.
 
+`Testairline_official.spc` (added during W.1) is the genuine Census
+Bureau test spec bundled directly inside the Windows x13prebuilt
+distribution's zip (`x13ashtml/Testairline.spc`) -- its own series data
+is byte-identical to `airline_official.spc`'s, an independent
+cross-check (from a source with no connection to this repo's own
+fixture history) that the corrected "official" series really is
+correct. Used by W.1's own bonus test to confirm a fully independent,
+authoritative spec runs cleanly through the artifact-resolved binary.
+
 ## diwali_regressor_proof/
 The identical series, but with a synthetic Diwali-effect user-defined
 regressor added to the regression spec. Compare its D10 against

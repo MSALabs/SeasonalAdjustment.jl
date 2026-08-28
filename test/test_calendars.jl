@@ -164,16 +164,22 @@ end
     # regressor with this task's own functions -- a synthetic "put a 1
     # in October, every year" pattern, matching exactly what the
     # existing verified diwali_official.spc hand-encodes -- and either:
-    #   (a) re-runs the real x13prebuilt binary if one can be located in
-    #       this environment, confirming the SAME October 1949 seasonal
-    #       factor shift (0.898593816033472 -> 0.753973303751993), or
+    #   (a) re-runs the real x13prebuilt binary via x13_binary_path()
+    #       (W.1), confirming the SAME October 1949 seasonal factor
+    #       shift (0.898593816033472 -> 0.753973303751993), or
     #   (b) at minimum confirms the generated vector is byte-identical
     #       to the data already embedded in diwali_official.spc.
-    # Both are always run; (a) is skipped (not failed) if no binary can
-    # be found, since it isn't portable to every environment this test
-    # suite might run in (W.1/W.3 will make binary discovery a first-
-    # class, portable mechanism -- this is a deliberately minimal,
-    # test-local stand-in, not a preview of that design).
+    # Both are always run; (a) is skipped (not failed) if
+    # x13_binary_available() is false in this environment.
+    #
+    # Refactored per handoff/w1-artifacts.md section 4a's explicit
+    # requirement: this previously hardcoded a hand-guessed path to a
+    # sibling repo's copy of the Linux binary, gated behind a
+    # Windows+WSL check, as an admitted stand-in ("W.1/W.3 will make
+    # binary discovery a first-class, portable mechanism -- this is a
+    # deliberately minimal, test-local stand-in, not a preview of that
+    # design"). Now that W.1 provides x13_binary_path()/
+    # x13_binary_available(), that stand-in is removed entirely.
     #
     # diwali_official.spc's regressor data is 156 months (13 years), not the
     # 144-month (12-year) series length -- confirmed by counting: this
@@ -205,17 +211,9 @@ end
     @test reg == expected   # (b): byte-identical to the existing verified spec's data array
 
     ran_real_binary = false
-    binary_candidates = String[]
-    haskey(ENV, "X13_BINARY") && push!(binary_candidates, ENV["X13_BINARY"])
-    append!(binary_candidates, [
-        joinpath(@__DIR__, "..", "..", "TSAnalytics.jl", "handoff", "x13ashtml"),
-    ])
-    binary_path = findfirst(isfile, binary_candidates)
-
-    if binary_path !== nothing && Sys.iswindows() && success(`wsl -e true`)
-        bin = binary_candidates[binary_path]
+    if x13_binary_available()
+        path = x13_binary_path()
         mktempdir() do dir
-            cp(bin, joinpath(dir, "x13ashtml"); force = true)
             # Reuse the airline series values directly from the existing
             # verified fixture rather than re-typing them.
             airline_spc = read(joinpath(@__DIR__, "..", "handoff", "verification", "airline_baseline", "airline_official.spc"), String)
@@ -242,9 +240,9 @@ end
             """
             write(joinpath(dir, "capstone.spc"), capstone_spc)
 
-            wsl_dir = replace(replace(dir, "\\" => "/"), r"^([A-Za-z]):" => s -> "/mnt/" * lowercase(string(s[1])))
-            cmd = `wsl -e bash -c "cd '$wsl_dir' && chmod +x x13ashtml && ./x13ashtml capstone"`
-            run(pipeline(cmd; stdout = devnull, stderr = devnull))
+            cd(dir) do
+                run(pipeline(ignorestatus(`$path capstone`); stdout = devnull, stderr = devnull))
+            end
 
             d10 = read(joinpath(dir, "capstone.d10"), String)
             lines = split(strip(d10), "\n")

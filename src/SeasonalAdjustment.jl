@@ -32,6 +32,7 @@ include("api.jl")          # W.4 -- the user-facing x13(...) entry point
 # include("native/seats.jl")     # S.5
 
 export x13, X13Result
+export x13_binary_path, x13_binary_available
 export INDIA_NSE
 export Calendar, TableCalendar
 export isbusinessday, isholiday, isweekend, adjust, advance, businessdaysbetween, holidaylist

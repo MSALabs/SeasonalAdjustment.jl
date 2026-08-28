@@ -16,7 +16,7 @@ using BusinessDays
 
 @testset "SeasonalAdjustment.jl" begin
     include("test_calendars.jl")   # W.0
-    # include("test_artifacts.jl")   # W.1
+    include("test_artifacts.jl")   # W.1
     # include("test_spec.jl")        # W.2
     # include("test_run_parse.jl")   # W.3
     # include("test_api.jl")         # W.4

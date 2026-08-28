@@ -4,73 +4,87 @@
 # Pinned commit: 61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19
 # (the exact commit these hashes and URLs were verified against)
 #
-# sha256 values below are REAL, computed directly from the actual
-# downloaded files (verified in-session, not placeholders).
+# All sha256 and git-tree-sha1 values below are REAL, computed directly
+# (sha256 from the actual downloaded files; git-tree-sha1 via
+# `julia --project=. tools/generate_artifacts.jl`, i.e.
+# Pkg.Artifacts.create_artifact on the actual extracted content) -- none
+# are placeholders or guesses. See handoff/w1-artifacts.md for the
+# session this was run in and the two real findings from doing so.
 #
-# git-tree-sha1 values are PLACEHOLDERS -- Julia's Artifacts system
-# hashes the *extracted directory tree*, which requires an actual Julia
-# runtime (Pkg.Artifacts.create_artifact) to compute correctly. Run
-# `julia --project=. tools/generate_artifacts.jl` (included in this
-# package) once in a real Julia environment to fill these in properly
-# before this file is trusted for `Pkg.instantiate()`. Do not guess or
-# hand-write a git-tree-sha1 value.
+# STRUCTURE NOTE (a real bug fixed in this task, not how this file was
+# originally scaffolded): Julia's Artifacts system requires all
+# platform-specific variants of one logical artifact to share the SAME
+# name via repeated `[[name]]` array-of-tables entries, each carrying
+# its own `os`/`arch` keys directly (confirmed against Artifacts.jl's
+# own `unpack_platform`, which reads `entry["os"]`/`entry["arch"]` from
+# each array element -- see stdlib Artifacts/src/Artifacts.jl and its
+# own test/Artifacts.toml fixture). The file previously used five
+# DIFFERENT top-level names (x13ashtml, x13ashtml_windows, ...), each a
+# single `[name]` table with a nested `[[name.platform]]` sub-table --
+# under that shape, `artifact"x13ashtml"` would only ever resolve the
+# Linux entry, on every platform, since the other four binaries lived
+# under names it would never look up. Fixed here to one shared name
+# (`x13ashtml`) with five array entries.
+#
+# MACOS NOTE (the open question from W.0 resolved, not left open): the
+# arm64 and x86_64 macOS tarballs are BYTE-IDENTICAL at this pinned
+# commit (confirmed via GitHub's own blob SHA for both paths, not just
+# our own sha256) -- and the binary inside is confirmed via `file` to be
+# `Mach-O 64-bit x86_64 executable`, NOT a universal/fat binary. This is
+# a genuine upstream repository issue, not a legitimate universal
+# binary: Apple Silicon users get an x86_64-only binary that will run
+# under Rosetta 2 translation, not natively. Both platform entries are
+# still declared below (pointing at the same real file) so artifact
+# resolution doesn't simply fail on arm64 Macs, but this should be
+# revisited if/when x13org/x13prebuilt ships a genuine native arm64
+# build.
 
-[x13ashtml]
-git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER -- see note above
+[[x13ashtml]]
+git-tree-sha1 = "d26789ab28482a93b867e29a228a64853eb99216"
 lazy = true
+os = "linux"
+arch = "x86_64"
 
     [[x13ashtml.download]]
     url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/linux/64/x13ashtml"
-    sha256 = "c4496c94985984ae9acdcf7fa164197a91fa52c2690b1e1a456312b96920f652"  # REAL, computed directly
+    sha256 = "c4496c94985984ae9acdcf7fa164197a91fa52c2690b1e1a456312b96920f652"
 
-    [[x13ashtml.platform]]
-    os = "linux"
-    arch = "x86_64"
-
-[x13ashtml_linux_armv7l]
-git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+[[x13ashtml]]
+git-tree-sha1 = "acd7d22f6cbdf60a2abae744ecc9e5c51f3d2a09"
 lazy = true
+os = "linux"
+arch = "armv7l"
 
-    [[x13ashtml_linux_armv7l.download]]
+    [[x13ashtml.download]]
     url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/linux/armv7l/x13ashtml"
-    sha256 = "c0fa23a2ee4683d1c370c1b7916fbcf7d22b631135ecfc350b40b5ae12762864"  # REAL, computed directly
+    sha256 = "c0fa23a2ee4683d1c370c1b7916fbcf7d22b631135ecfc350b40b5ae12762864"
 
-    [[x13ashtml_linux_armv7l.platform]]
-    os = "linux"
-    arch = "armv7l"
-
-[x13ashtml_windows]
-git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+[[x13ashtml]]
+git-tree-sha1 = "b6e56a2dfd04f6d126e8a7b1b3ab7281bc1f8038"
 lazy = true
+os = "windows"
+arch = "x86_64"
 
-    [[x13ashtml_windows.download]]
+    [[x13ashtml.download]]
     url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/windows/x13ashtml.zip"
-    sha256 = "360def33266deea0640b75b998ae62da5aaeb174b1b284da94dcfe1f1fb0bb83"  # REAL, computed directly
+    sha256 = "360def33266deea0640b75b998ae62da5aaeb174b1b284da94dcfe1f1fb0bb83"
 
-    [[x13ashtml_windows.platform]]
-    os = "windows"
-    arch = "x86_64"
-
-[x13ashtml_mac_x86_64]
-git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+[[x13ashtml]]
+git-tree-sha1 = "b014791cb9413683ee2d468e930f68bcec187a57"
 lazy = true
+os = "macos"
+arch = "x86_64"
 
-    [[x13ashtml_mac_x86_64.download]]
+    [[x13ashtml.download]]
     url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/mac/64/x13ashtml.tar.gz"
-    sha256 = "99feaaab6c0ccbbc47b736310c69ff88127b1d99b4b2ce851db5aee844fe9b2c"  # REAL, computed directly
+    sha256 = "99feaaab6c0ccbbc47b736310c69ff88127b1d99b4b2ce851db5aee844fe9b2c"
 
-    [[x13ashtml_mac_x86_64.platform]]
-    os = "macos"
-    arch = "x86_64"
-
-[x13ashtml_mac_arm64]
-git-tree-sha1 = "0000000000000000000000000000000000000000"  # PLACEHOLDER
+[[x13ashtml]]
+git-tree-sha1 = "b014791cb9413683ee2d468e930f68bcec187a57"
 lazy = true
+os = "macos"
+arch = "aarch64"
 
-    [[x13ashtml_mac_arm64.download]]
+    [[x13ashtml.download]]
     url = "https://raw.githubusercontent.com/x13org/x13prebuilt/61c4043949f43c1ea5ad0fbbc7b6c11fc5073d19/v1.1.57/mac/arm64/x13ashtml.tar.gz"
-    sha256 = "99feaaab6c0ccbbc47b736310c69ff88127b1d99b4b2ce851db5aee844fe9b2c"  # REAL, computed directly -- note: IDENTICAL hash to mac_x86_64, see caveat below
-
-    [[x13ashtml_mac_arm64.platform]]
-    os = "macos"
-    arch = "aarch64"
+    sha256 = "99feaaab6c0ccbbc47b736310c69ff88127b1d99b4b2ce851db5aee844fe9b2c"

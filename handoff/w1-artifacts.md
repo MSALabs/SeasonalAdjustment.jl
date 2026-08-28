@@ -144,6 +144,38 @@ end
 
 ---
 
+## 4a. A real connection to W.0, found by reviewing its actual implementation
+
+W.0's capstone test needed to run the real binary to prove its
+custom-regressor mechanism, but no proper binary resolution existed
+yet — so it improvised: a hardcoded path guess, gated behind a
+Windows+WSL check, invoking the Linux binary through WSL rather than
+the native Windows executable. Its own comments say plainly: *"W.1/W.3
+will make binary discovery a first-class, portable mechanism — this is
+a deliberately minimal, test-local stand-in, not a preview of that
+design."* Take that as a direct requirement, not just context:
+
+**Once `x13_binary_path()` exists, go back and refactor W.0's capstone
+test to call it, removing the hardcoded path guess and the
+WSL-specific branch entirely.** That stand-in should not persist once
+this task provides the real mechanism — leaving it in place would mean
+two different, inconsistent binary-resolution strategies coexisting in
+the same codebase.
+
+**Also worth stating plainly, confirmed by this same review**: the
+devcontainer is a Linux environment, even when the host machine is
+Windows. Locally, inside it, only the Linux artifact path can actually
+be exercised directly — Windows and macOS genuinely need the CI matrix
+to confirm (already required in section 5 below, now grounded in a
+concrete reason rather than general caution). If cross-platform testing
+is ever wanted from a real Windows host directly (outside the
+devcontainer), the WSL-invocation pattern W.0's capstone test already
+worked out is a reasonable, reusable technique for that specific
+case — worth keeping in mind as a documented option, not something to
+throw away just because the hardcoded path around it gets removed.
+
+---
+
 ## 5. What to do with this
 
 1. **Run `tools/generate_artifacts.jl` for real** — this needs an
@@ -165,6 +197,9 @@ end
    configured in `.github/workflows/CI.yml` across all three OSes) to
    actually confirm, not this local environment alone. Don't mark this
    task complete based on Linux passing only.
-5. Update `development-sequence.md`'s W.1 row, noting explicitly which
+5. **Refactor W.0's capstone test** (section 4a) to use `x13_binary_path()`
+   once it exists, removing its hardcoded path guess and WSL-specific
+   branch — this is a required follow-up, not optional cleanup.
+6. Update `development-sequence.md`'s W.1 row, noting explicitly which
    platforms were actually confirmed (local Linux vs. CI-confirmed
    Windows/macOS) rather than a single blanket "done."
