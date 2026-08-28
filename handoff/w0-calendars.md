@@ -98,7 +98,7 @@ const INDIA_NSE_HOLIDAYS_2026 = [
 
 ## 4. The actual downstream target: exact numeric format already tested against the real binary
 
-**Confirmed working** (this repo's `handoff/verification/diwali_regressor_proof/diwali_test.spc`):
+**Confirmed working** (this repo's `handoff/verification/diwali_regressor_proof/diwali_official.spc`):
 ```
 regression {
   variables = (td)
@@ -230,9 +230,10 @@ end
     # was built from, using this task's own functions instead of the
     # hand-written synthetic values -- then either (a) re-run x13prebuilt
     # directly if it's available in this environment, confirming the
-    # SAME October seasonal-factor shift (0.8986 -> 0.7268), or (b) at
+    # SAME October seasonal-factor shift (0.8986 -> 0.7540, per the
+    # corrected "official" fixture data -- see handoff/verification/README.md), or (b) at
     # minimum confirm the generated vector byte-matches the values
-    # already in handoff/verification/diwali_regressor_proof/diwali_test.spc.
+    # already in handoff/verification/diwali_regressor_proof/diwali_official.spc.
     # This is the test that actually closes the loop between W.0 and
     # the mechanism already proven to work.
 end

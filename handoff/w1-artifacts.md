@@ -126,7 +126,7 @@ end
 end
 
 @testset "end-to-end: resolved binary reproduces already-verified output" begin
-    # run handoff/verification/airline_baseline/airline2.spc through the
+    # run handoff/verification/airline_baseline/airline_official.spc through the
     # artifact-resolved binary (not a manually-placed copy) and confirm
     # the resulting D10/D11/D12 tables match the values already
     # committed in that same directory -- this is the test that

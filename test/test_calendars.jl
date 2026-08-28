@@ -163,30 +163,30 @@ end
     # handoff/verification/diwali_regressor_proof/). It generates the
     # regressor with this task's own functions -- a synthetic "put a 1
     # in October, every year" pattern, matching exactly what the
-    # existing verified diwali_test.spc hand-encodes -- and either:
+    # existing verified diwali_official.spc hand-encodes -- and either:
     #   (a) re-runs the real x13prebuilt binary if one can be located in
     #       this environment, confirming the SAME October 1949 seasonal
-    #       factor shift (0.898593816033472 -> 0.726751422651829), or
+    #       factor shift (0.898593816033472 -> 0.753973303751993), or
     #   (b) at minimum confirms the generated vector is byte-identical
-    #       to the data already embedded in diwali_test.spc.
+    #       to the data already embedded in diwali_official.spc.
     # Both are always run; (a) is skipped (not failed) if no binary can
     # be found, since it isn't portable to every environment this test
     # suite might run in (W.1/W.3 will make binary discovery a first-
     # class, portable mechanism -- this is a deliberately minimal,
     # test-local stand-in, not a preview of that design).
     #
-    # diwali_test.spc's regressor data is 156 months (13 years), not the
+    # diwali_official.spc's regressor data is 156 months (13 years), not the
     # 144-month (12-year) series length -- confirmed by counting: this
     # is exactly the airline series' 144 months PLUS the 12-month
     # RegARIMA forecast horizon, the first of the two practical
     # requirements development-sequence.md documents (regressor data
     # must cover the forecast horizon, not just the historical series).
 
-    # diwali_test.spc's synthetic pattern isn't "October every year" --
+    # diwali_official.spc's synthetic pattern isn't "October every year" --
     # it's Oct,Nov,Nov repeating (October only when (year-1949)%3==0),
     # loosely approximating how a real lunisolar festival date drifts
     # year to year. Confirmed by inspecting the actual data in
-    # diwali_test.spc directly rather than assuming a simpler pattern.
+    # diwali_official.spc directly rather than assuming a simpler pattern.
     function synthetic_diwali(year::Integer)
         (1949 <= year <= 1961) || return nothing
         return (year - 1949) % 3 == 0 ? Date(year, 10, 10) : Date(year, 11, 10)
@@ -196,7 +196,7 @@ end
     reg = custom_holiday_regressor(Date(1949, 1, 1), Date(1961, 12, 31), no_weekend_cal, synthetic_diwali)
     @test length(reg) == 156
 
-    spc_path = joinpath(@__DIR__, "..", "handoff", "verification", "diwali_regressor_proof", "diwali_test.spc")
+    spc_path = joinpath(@__DIR__, "..", "handoff", "verification", "diwali_regressor_proof", "diwali_official.spc")
     spc_text = read(spc_path, String)
     m = match(r"data = \(([^)]*)\)\s*\}\s*x11", spc_text)
     @test m !== nothing
@@ -218,7 +218,7 @@ end
             cp(bin, joinpath(dir, "x13ashtml"); force = true)
             # Reuse the airline series values directly from the existing
             # verified fixture rather than re-typing them.
-            airline_spc = read(joinpath(@__DIR__, "..", "handoff", "verification", "airline_baseline", "airline2.spc"), String)
+            airline_spc = read(joinpath(@__DIR__, "..", "handoff", "verification", "airline_baseline", "airline_official.spc"), String)
             airline_data_match = match(r"data = \(([\s\S]*?)\)\s*\}"m, airline_spc)
             @test airline_data_match !== nothing
             data_block = airline_data_match.captures[1]
@@ -250,7 +250,7 @@ end
             lines = split(strip(d10), "\n")
             oct1949_line = only(filter(l -> startswith(l, "194910"), lines))
             oct1949_value = parse(Float64, split(oct1949_line, "\t")[2])
-            @test oct1949_value ≈ 0.726751422651829 atol = 1e-9
+            @test oct1949_value ≈ 0.753973303751993 atol = 1e-9
             ran_real_binary = true
         end
     end

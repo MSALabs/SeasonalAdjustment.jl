@@ -12,7 +12,7 @@ Use this as the primary W.1-W.4 regression fixture.
 ## diwali_regressor_proof/
 The identical series, but with a synthetic Diwali-effect user-defined
 regressor added to the regression spec. Compare its D10 against
-airline_baseline/airline2.d10 directly -- October's seasonal factor
-shifts from 0.898593816033472 to 0.726751422651829 (1949), proving the
+airline_baseline/airline_official.d10 directly -- October's seasonal factor
+shifts from 0.898593816033472 to 0.753973303751993 (1949), proving the
 custom regressor was genuinely absorbed into the RegARIMA fit, not
 silently ignored. This is the reference case for W.0's whole purpose.
