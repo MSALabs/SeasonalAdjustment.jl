@@ -33,6 +33,9 @@ include("api.jl")          # W.4 -- the user-facing x13(...) entry point
 
 export x13, X13Result
 export INDIA_NSE
+export Calendar, TableCalendar
+export isbusinessday, isholiday, isweekend, adjust, advance, businessdaysbetween, holidaylist
 export trading_day_regressors, easter_regressor, custom_holiday_regressor
+export easter_date
 
 end # module

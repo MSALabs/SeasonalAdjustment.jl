@@ -1,45 +1,21 @@
 # src/calendars.jl
 #
-# W.0 -- business-day/holiday calendars (India + major markets) and the
-# regressor-generation functions that turn a calendar into plain
-# Date/Float64 data. W.2 (not yet built) is responsible for serializing
-# this data into a .spc file's `regression { user = (...) data = (...) }`
-# block; W.0 stops at producing the data itself.
-#
-# See handoff-w0-calendars.md for verified references, the honest gaps
-# in the moveable-holiday table below, and the test plan this file's
-# tests implement.
+# W.0 -- see handoff/w0-calendars.md for the full design rationale,
+# verified references, and test plan this file's tests implement.
 
 # ------------------------------------------------------------------
-# Easter Sunday / Good Friday -- the one moveable Christian holiday
-# with a closed-form date formula (Anonymous Gregorian algorithm).
-# Cross-validated in handoff-w0-calendars.md against 3 real NSE Good
-# Friday dates (2024, 2025, 2026) -- all matched exactly.
+# Easter -- reuses BusinessDays.jl's own computation directly (handoff
+# section 2: "BusinessDays.jl already computes Easter internally...
+# reuse this directly rather than re-deriving Gauss's algorithm").
 # ------------------------------------------------------------------
 
 """
     easter_date(year) -> Date
 
-Easter Sunday for the Gregorian calendar `year`, via the Anonymous
-Gregorian (Meeus/Jones/Butcher) algorithm.
+Easter Sunday for `year`, computed by BusinessDays.jl's own
+`easter_date`/`easter_rata` (not re-derived here).
 """
-function easter_date(year::Integer)
-    a = year % 19
-    b = year ÷ 100
-    c = year % 100
-    d = b ÷ 4
-    e = b % 4
-    f = (b + 8) ÷ 25
-    g = (b - f + 1) ÷ 3
-    h = (19a + b - d - g + 15) % 30
-    i = c ÷ 4
-    k = c % 4
-    l = (32 + 2e + 2i - h - k) % 7
-    m = (a + 11h + 22l) ÷ 451
-    month = (h + l - 7m + 114) ÷ 31
-    day = ((h + l - 7m + 114) % 31) + 1
-    return Date(year, month, day)
-end
+easter_date(year::Integer) = BusinessDays.easter_date(Dates.Year(year))
 
 """
     good_friday(year) -> Date
@@ -49,40 +25,175 @@ Good Friday (Easter Sunday minus two days) for `year`.
 good_friday(year::Integer) = easter_date(year) - Day(2)
 
 # ------------------------------------------------------------------
+# Calendar / TableCalendar -- a QuantLib-style calendar abstraction
+# (handoff section 1; `TableCalendar` is this task's `BespokeCalendar`
+# analogue), deliberately its OWN hierarchy rather than a
+# `BusinessDays.HolidayCalendar` subtype: BusinessDays.jl's
+# `isweekend`/`isbday` hardcode Saturday/Sunday as the weekend for
+# every calendar (confirmed directly from its source, bdays.jl:
+# `isweekend(dt::Date) = signbit(5 - dayofweek(dt))`, dispatched only
+# on the date, not the calendar) -- there is no way to express a
+# different weekend (e.g. Friday/Saturday) through it. Easter is still
+# reused from BusinessDays.jl (above); only the part it genuinely can't
+# express -- a per-calendar weekend set -- is new here.
+# ------------------------------------------------------------------
+
+abstract type Calendar end
+
+"""
+    TableCalendar <: Calendar
+
+A calendar defined by (1) algorithmically-computable fixed holidays
+(functions `year::Int -> Date`), (2) a year-keyed table of moveable
+holidays with no closed-form date, and (3) a per-calendar set of
+weekend weekdays (`Dates.dayofweek` values, Monday=1..Sunday=7).
+"""
+struct TableCalendar <: Calendar
+    fixed_holidays::Vector{Function}                      # year::Int -> Date
+    table_holidays::Dict{Int,Vector{Tuple{Date,String}}}   # year => [(date, name), ...]
+    weekend::Set{Int}                                       # dayofweek values counted as weekend
+end
+
+BusinessDays.isweekend(cal::Calendar, wd::Integer) = wd in cal.weekend
+
+function BusinessDays.isholiday(cal::TableCalendar, d::Date)
+    y = year(d)
+    any(f -> f(y) == d, cal.fixed_holidays) && return true
+    if haskey(cal.table_holidays, y)
+        any(e -> e[1] == d, cal.table_holidays[y]) && return true
+    end
+    return false
+end
+
+"""
+    isbusinessday(cal, d) -> Bool
+
+`true` unless `d` is a weekend (per `cal`'s own weekend set) or a
+holiday (per `cal`'s own fixed + table holidays).
+"""
+isbusinessday(cal::Calendar, d::Date) = !isweekend(cal, dayofweek(d)) && !isholiday(cal, d)
+
+function _seek(cal::Calendar, d::Date, step::Int)
+    d2 = d + Day(step)
+    while !isbusinessday(cal, d2)
+        d2 += Day(step)
+    end
+    return d2
+end
+
+"""
+    adjust(cal, d, convention=:following) -> Date
+
+Standard business-day conventions (`:following`, `:preceding`,
+`:modified_following`, `:modified_preceding`, `:unadjusted`), applied
+to `d` under `cal`. Returns `d` unchanged if it's already a business
+day (or if `convention == :unadjusted`).
+"""
+function adjust(cal::Calendar, d::Date, convention::Symbol = :following)
+    convention === :unadjusted && return d
+    isbusinessday(cal, d) && return d
+    if convention === :following
+        return _seek(cal, d, +1)
+    elseif convention === :preceding
+        return _seek(cal, d, -1)
+    elseif convention === :modified_following
+        adj = _seek(cal, d, +1)
+        return month(adj) == month(d) ? adj : _seek(cal, d, -1)
+    elseif convention === :modified_preceding
+        adj = _seek(cal, d, -1)
+        return month(adj) == month(d) ? adj : _seek(cal, d, +1)
+    else
+        throw(ArgumentError("adjust: unknown business day convention $convention"))
+    end
+end
+
+"""
+    advance(cal, d, period, convention=:following) -> Date
+
+Shifts `d` by the calendar `period` (e.g. `Dates.Month(1)`), then
+applies `adjust` with `convention` to the result.
+"""
+advance(cal::Calendar, d::Date, period::Dates.Period, convention::Symbol = :following) =
+    adjust(cal, d + period, convention)
+
+"""
+    businessdaysbetween(cal, from, to) -> Int
+
+Count of business days in the closed interval `[min(from,to), max(from,to)]`.
+"""
+function businessdaysbetween(cal::Calendar, from::Date, to::Date)
+    lo, hi = min(from, to), max(from, to)
+    return count(d -> isbusinessday(cal, d), lo:Day(1):hi)
+end
+
+"""
+    holidaylist(cal, from, to; include_weekends=false) -> Vector{Date}
+
+Holiday dates in `[min(from,to), max(from,to)]`. `include_weekends`
+additionally includes every weekend date in range (per `cal`'s own
+weekend set), not just named holidays.
+
+Errors loudly (`ArgumentError`) if any year spanned by the range has no
+`table_holidays` entry in `cal` -- silently falling back to fixed
+holidays only would look complete while quietly missing most of a
+real moveable-feast calendar. See handoff/w0-calendars.md section 5.
+"""
+function holidaylist(cal::TableCalendar, from::Date, to::Date; include_weekends::Bool = false)
+    lo, hi = min(from, to), max(from, to)
+    for y in year(lo):year(hi)
+        haskey(cal.table_holidays, y) || throw(ArgumentError(
+            "No holiday table entry for year $y -- add it from the official NSE " *
+            "circular before using this calendar for that year",
+        ))
+    end
+    out = Date[]
+    for d in lo:Day(1):hi
+        if isholiday(cal, d) || (include_weekends && isweekend(cal, dayofweek(d)))
+            push!(out, d)
+        end
+    end
+    return out
+end
+
+# ------------------------------------------------------------------
 # INDIA_NSE -- the National Stock Exchange trading calendar
 # ------------------------------------------------------------------
 
-"""
-    NSEHolidayCalendar <: BusinessDays.HolidayCalendar
+# Fixed-date NSE holidays -- always the same Gregorian date every year,
+# confirmed consistent across 3 independent years (2024-2026) of
+# cross-checked aggregator data. Ambedkar Jayanti (Apr 14) is also a
+# fixed date but deliberately excluded here -- see the gap note below.
+const NSE_FIXED_HOLIDAYS = Function[
+    y -> Date(y, 1, 26),   # Republic Day
+    y -> Date(y, 5, 1),    # Maharashtra Day
+    y -> Date(y, 8, 15),   # Independence Day
+    y -> Date(y, 10, 2),   # Mahatma Gandhi Jayanti
+    y -> Date(y, 12, 25),  # Christmas
+    good_friday,
+]
 
-India's National Stock Exchange (equity segment) trading calendar:
-weekends, three fixed-date national holidays, Good Friday, and a
-year-keyed table of moveable Hindu-calendar feasts (Holi, Diwali).
-
-The moveable-feast table (`NSE_MOVEABLE_HOLIDAYS`) currently covers
-2024-2026 only and was cross-checked across multiple independent
-aggregator sites, NOT read directly from NSE's own circular PDF (see
-handoff-w0-calendars.md for why, and the specific sources used). Treat
-it as a reasonable-confidence starting point that should be reconciled
-against NSE's own circular before production use, and extended for
-any year beyond 2026 before relying on it for that year.
-"""
-struct NSEHolidayCalendar <: BusinessDays.HolidayCalendar end
-
-const NSE_FIXED_HOLIDAYS = (
-    (month = 1, day = 26, name = "Republic Day"),
-    (month = 8, day = 15, name = "Independence Day"),
-    (month = 10, day = 2, name = "Mahatma Gandhi Jayanti"),
-)
-
-# Moveable-feast holidays -- NO closed-form date formula exists for these
-# (they follow lunar/lunisolar calendars). GAP, flagged honestly (see
-# handoff-w0-calendars.md): sourced from cross-checked third-party
-# aggregators this session, not NSE's own circular directly (its PDF
-# could not be machine-read). Eid is deliberately omitted -- sources
-# disagreed on whether it's a full or partial NSE closure in a given
-# year, and guessing would be worse than leaving the gap visible.
-const NSE_MOVEABLE_HOLIDAYS = Dict(
+# Moveable-feast holidays (Hindu lunisolar calendar) -- NO closed-form
+# date formula exists for these. GAP, flagged honestly (see
+# handoff/w0-calendars.md): sourced from cross-checked third-party
+# aggregators this session (2-3 independent sources per date), NOT read
+# directly from NSE's own circular PDF (WebFetch could not extract text
+# from it, and nseindia.com's own holiday page timed out). Reconcile
+# against NSE's own circular before production use.
+#
+# DELIBERATELY OMITTED, as further unresolved gaps rather than guesses:
+# Eid-ul-Fitr, Bakri Id, Muharram, Mahashivratri, Ram Navami, Mahavir
+# Jayanti, Ganesh Chaturthi, and Dussehra (as distinct from Gandhi
+# Jayanti) -- sources disagreed on whether NSE's equity segment treats
+# these as full-day closures or partial ("morning off") closures in a
+# given year, and that inconsistency looked like it might be conflating
+# the equity and commodity (MCX) segment calendars. Guru Nanak Jayanti
+# is ALSO omitted for 2026 specifically because of a genuine, unresolved
+# source conflict: this task's own handoff (handoff/w0-calendars.md)
+# states Nov 5, 2026, sourced from a single aggregator; independently
+# re-checking this session found 3 different aggregators (Groww, Angel
+# One, Zerodha) agreeing on Nov 24, 2026 instead. Rather than silently
+# pick one, it's left out until reconciled against NSE's own circular.
+const NSE_MOVEABLE_HOLIDAYS = Dict{Int,Vector{Tuple{Date,String}}}(
     2024 => [
         (Date(2024, 3, 25), "Holi"),
         (Date(2024, 11, 1), "Diwali-Laxmi Pujan"),
@@ -95,98 +206,85 @@ const NSE_MOVEABLE_HOLIDAYS = Dict(
     ],
     2026 => [
         (Date(2026, 3, 3), "Holi"),
-        (Date(2026, 11, 8), "Diwali-Laxmi Pujan"),   # Sunday; Muhurat trading only
+        (Date(2026, 11, 8), "Diwali-Laxmi Pujan"),   # Sunday; Muhurat trading only, no extra weekday closure
         (Date(2026, 11, 10), "Diwali-Balipratipada"),
     ],
 )
 
-function BusinessDays.isholiday(::NSEHolidayCalendar, dt::Date)
-    m, d, y = month(dt), day(dt), year(dt)
-    any(h -> h.month == m && h.day == d, NSE_FIXED_HOLIDAYS) && return true
-    dt == good_friday(y) && return true
-    if haskey(NSE_MOVEABLE_HOLIDAYS, y)
-        any(entry -> entry[1] == dt, NSE_MOVEABLE_HOLIDAYS[y]) && return true
-    end
-    return false
+"""
+    INDIA_NSE::TableCalendar
+
+The India NSE trading calendar. Weekend = Saturday/Sunday (`Set([6,7])`
+in `Dates.dayofweek` terms). See [`NSE_MOVEABLE_HOLIDAYS`](@ref)'s own
+docstring-adjacent comment for the honest gaps in the moveable-feast
+table.
+"""
+const INDIA_NSE = TableCalendar(NSE_FIXED_HOLIDAYS, NSE_MOVEABLE_HOLIDAYS, Set([6, 7]))
+
+_find_holiday(year::Integer, needle::AbstractString) = begin
+    haskey(NSE_MOVEABLE_HOLIDAYS, year) || return nothing
+    idx = findfirst(e -> occursin(needle, lowercase(e[2])), NSE_MOVEABLE_HOLIDAYS[year])
+    idx === nothing ? nothing : NSE_MOVEABLE_HOLIDAYS[year][idx][1]
 end
 
 """
-    INDIA_NSE::NSEHolidayCalendar
+    diwali_date(year) -> Union{Date,Nothing}
 
-The India NSE trading calendar singleton. Use with `BusinessDays.isbday`
-/ `isholiday`, or pass directly to [`trading_day_regressors`](@ref) /
-[`easter_regressor`](@ref).
-
-Any of BusinessDays.jl's own built-in calendars (e.g.
-`BusinessDays.USSettlement()`) work with those same functions too --
-India needed a calendar defined from scratch because BusinessDays.jl
-doesn't ship one, "major markets" don't.
+The Diwali Laxmi Pujan date for `year`, or `nothing` if `year` isn't in
+[`NSE_MOVEABLE_HOLIDAYS`](@ref). A `holiday_years_present`-shaped
+callback for [`custom_holiday_regressor`](@ref).
 """
-const INDIA_NSE = NSEHolidayCalendar()
+diwali_date(year::Integer) = _find_holiday(year, "laxmi pujan")
 
 """
-    nse_moveable_holiday_dates(name, years) -> Vector{Date}
+    holi_date(year) -> Union{Date,Nothing}
 
-Look up [`NSE_MOVEABLE_HOLIDAYS`](@ref) entries whose name contains
-`name` (case-insensitive; e.g. `"diwali"` matches both Laxmi Pujan and
-Balipratipada) across `years`, in date order.
-
-Errors loudly, naming the missing year, if any requested year isn't in
-the table -- silently returning fewer holidays than actually exist
-would corrupt a RegARIMA fit that assumed complete coverage rather than
-fail visibly, and regressor data is specifically required to cover the
-full forecast horizon (see development-sequence.md's W.2 notes), so a
-quietly-missing year is exactly the failure mode to avoid here.
+The Holi date for `year`, or `nothing` if `year` isn't in
+[`NSE_MOVEABLE_HOLIDAYS`](@ref). A `holiday_years_present`-shaped
+callback for [`custom_holiday_regressor`](@ref).
 """
-function nse_moveable_holiday_dates(name::AbstractString, years::AbstractVector{<:Integer})
-    dates = Date[]
-    lname = lowercase(name)
-    for y in years
-        haskey(NSE_MOVEABLE_HOLIDAYS, y) || error(
-            "no NSE moveable-holiday data for year $y -- extend " *
-            "NSE_MOVEABLE_HOLIDAYS (src/calendars.jl) from NSE's own " *
-            "official circular before generating regressor data that " *
-            "covers this year (currently tabulated years: " *
-            "$(sort(collect(keys(NSE_MOVEABLE_HOLIDAYS)))))",
-        )
-        for (d, hname) in NSE_MOVEABLE_HOLIDAYS[y]
-            occursin(lname, lowercase(hname)) && push!(dates, d)
-        end
-    end
-    return sort(dates)
-end
+holi_date(year::Integer) = _find_holiday(year, "holi")
 
 # ------------------------------------------------------------------
 # Regressor generation -- turns a calendar/holiday set into the plain
-# Date/Float64 data W.2 will serialize into a .spc user-regressor block.
-#
-# `periods` is always an explicit AbstractVector{<:Tuple{Date,Date}} of
-# inclusive (from, to) ranges, supplied by the caller. W.0 does not
-# infer period boundaries or date ranges itself -- the two confirmed
-# practical requirements around forecast-horizon coverage (see
-# development-sequence.md) are W.2's responsibility to act on, not
-# W.0's to guess at.
+# Date/Float64 data W.2 will serialize into a .spc user-regressor
+# block. `from`/`to` are supplied by the caller (eventually W.2, which
+# knows the series' actual period boundaries and the forecast horizon
+# it needs covered); W.0 does not infer date ranges itself.
 # ------------------------------------------------------------------
 
-"""
-    trading_day_regressors(cal, periods) -> Matrix{Float64}
+function _monthly_periods(from::Date, to::Date)
+    periods = Tuple{Date,Date}[]
+    d = Dates.firstdayofmonth(from)
+    stop = Dates.firstdayofmonth(to)
+    while d <= stop
+        push!(periods, (d, Dates.lastdayofmonth(d)))
+        d += Dates.Month(1)
+    end
+    return periods
+end
 
-For each `(from, to)` period, count actual business days (per `cal`) on
-each weekday, returned as a `(length(periods), 6)` matrix using X-13's
-own `usertype=td` contrast convention: column `j` (Monday=1..Saturday=6)
-is `(# business days on weekday j in that period) - (# business days on
-Sunday in that period)`.
-
-`cal` can be [`INDIA_NSE`](@ref) or any `BusinessDays.HolidayCalendar`
-(e.g. one of BusinessDays.jl's own built-in major-market calendars).
 """
-function trading_day_regressors(cal::BusinessDays.HolidayCalendar,
-                                 periods::AbstractVector{<:Tuple{Date,Date}})
+    trading_day_regressors(from, to, cal; freq=:month) -> Matrix{Float64}
+
+For each period between `from` and `to` (currently only `freq=:month`
+is supported), count actual business days (per `cal`) on each weekday,
+returned as a `(nperiods, 6)` matrix using X-13's own `usertype=td`
+contrast convention: column `j` (Monday=1..Saturday=6) is `(# business
+days on weekday j in that period) - (# business days on Sunday in that
+period)`.
+"""
+function trading_day_regressors(from::Date, to::Date, cal::Calendar; freq::Symbol = :month)
+    freq === :month || throw(ArgumentError(
+        "trading_day_regressors: freq=$freq isn't supported yet (only :month) -- " *
+        "extend _monthly_periods-style tiling before using another frequency",
+    ))
+    periods = _monthly_periods(from, to)
     out = Matrix{Float64}(undef, length(periods), 6)
-    for (i, (from, to)) in enumerate(periods)
+    for (i, (p_from, p_to)) in enumerate(periods)
         counts = zeros(Int, 7)  # index 1=Monday .. 7=Sunday, matching Dates.dayofweek
-        for d in from:Day(1):to
-            if BusinessDays.isbday(cal, d)
+        for d in p_from:Day(1):p_to
+            if isbusinessday(cal, d)
                 counts[dayofweek(d)] += 1
             end
         end
@@ -197,21 +295,30 @@ function trading_day_regressors(cal::BusinessDays.HolidayCalendar,
 end
 
 """
-    easter_regressor(periods; window::Integer=8) -> Vector{Float64}
+    easter_regressor(from, to; window=0) -> Vector{Float64}
 
-The standard Census/X-13 Easter regressor: for each `(from, to)` period,
-the fraction of the `window`-day window immediately before Easter Sunday
-(of whichever year `to` falls in) that overlaps that period. `window`
-defaults to 8, matching X-13's own default `easter[8]`.
+The standard Census/X-13 Easter regressor: for each monthly period
+between `from` and `to`, the fraction of the `window`-day window
+immediately before Easter Sunday (of whichever year that period falls
+in) that overlaps the period. `window=0` (the default) produces an
+all-zero vector -- X-13 itself has no universal default `w`, the user
+always specifies it explicitly in the `.spc` file, so no particular
+value is assumed here either; pass an explicit `window` (commonly 1, 8,
+or 15 in practice).
 """
-function easter_regressor(periods::AbstractVector{<:Tuple{Date,Date}}; window::Integer=8)
+function easter_regressor(from::Date, to::Date; window::Integer = 0)
+    periods = _monthly_periods(from, to)
     out = Vector{Float64}(undef, length(periods))
-    for (i, (from, to)) in enumerate(periods)
-        e = easter_date(year(to))
+    for (i, (p_from, p_to)) in enumerate(periods)
+        if window <= 0
+            out[i] = 0.0
+            continue
+        end
+        e = easter_date(year(p_to))
         window_start = e - Day(window)
         window_end = e - Day(1)
-        overlap_start = max(from, window_start)
-        overlap_end = min(to, window_end)
+        overlap_start = max(p_from, window_start)
+        overlap_end = min(p_to, window_end)
         days_in = overlap_end >= overlap_start ? (Dates.value(overlap_end - overlap_start) + 1) : 0
         out[i] = days_in / window
     end
@@ -219,16 +326,39 @@ function easter_regressor(periods::AbstractVector{<:Tuple{Date,Date}}; window::I
 end
 
 """
-    custom_holiday_regressor(holiday_dates, periods) -> Vector{Float64}
+    custom_holiday_regressor(from, to, cal, holiday_years_present) -> Vector{Float64}
 
-For each `(from, to)` period, count how many `holiday_dates` fall within
-it. This is the exact mechanism verified end-to-end against the real
-`x13prebuilt` binary in `verification/diwali_regressor_proof` (via
-`regression { user = (...) usertype = (holiday) }`) -- W.0 produces the
-`data` vector that block needs; W.2 is responsible for writing the block
-itself.
+For each monthly period between `from` and `to`, `1.0` if
+`holiday_years_present(year)` (a function `year::Int ->
+Union{Date,Nothing}`) returns a date that both falls in that period AND
+is not already a weekend under `cal` (a holiday that lands on a weekend
+has no incremental trading-day effect to explain -- matches the "no
+extra closure" annotation real NSE holiday listings use for exactly
+this case), `0.0` otherwise. A year for which `holiday_years_present`
+returns `nothing` contributes `0.0`, silently -- by design, this
+function treats "not applicable this year" and "not in the table" the
+same way; callers who need to distinguish a genuine gap from a holiday
+that simply didn't occur should audit coverage with `holidaylist`
+first, which errors loudly on an untabulated year.
+
+This is the exact mechanism verified end-to-end against the real
+`x13prebuilt` binary in `handoff/verification/diwali_regressor_proof`
+(via `regression { user = (...) usertype = (holiday) }`) -- this
+function produces the `data` vector that block needs; W.2 is
+responsible for writing the block itself.
 """
-function custom_holiday_regressor(holiday_dates::AbstractVector{Date},
-                                   periods::AbstractVector{<:Tuple{Date,Date}})
-    return [count(d -> from <= d <= to, holiday_dates) |> Float64 for (from, to) in periods]
+function custom_holiday_regressor(from::Date, to::Date, cal::Calendar, holiday_years_present::Function)
+    periods = _monthly_periods(from, to)
+    out = Vector{Float64}(undef, length(periods))
+    for (i, (p_from, p_to)) in enumerate(periods)
+        hit = 0.0
+        for y in year(p_from):year(p_to)
+            d = holiday_years_present(y)
+            if d !== nothing && p_from <= d <= p_to && !isweekend(cal, dayofweek(d))
+                hit = 1.0
+            end
+        end
+        out[i] = hit
+    end
+    return out
 end

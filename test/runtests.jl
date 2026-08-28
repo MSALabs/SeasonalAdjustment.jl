@@ -1,6 +1,11 @@
 using SeasonalAdjustment
 using Test
-using Dates
+using Dates: Date, dayofweek  # NOT a blanket `using Dates` -- Dates also
+                               # exports `adjust`, which collides with
+                               # SeasonalAdjustment's own `adjust` and
+                               # forces qualification everywhere; import
+                               # only the specific names tests need.
+import Dates
 using BusinessDays
 
 # Each stage's own test file gets included here as it's implemented.
