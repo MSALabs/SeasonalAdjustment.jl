@@ -205,7 +205,15 @@ function x13_binary_available()
         # file, not executable, permission denied) as unavailable.
         run(pipeline(ignorestatus(`$path`); stdout = devnull, stderr = devnull))
         return true
-    catch
+    catch e
+        # A bare `catch; return false` here previously swallowed the
+        # actual reason silently -- made this function impossible to
+        # debug from CI output alone when a fresh install resolves a
+        # path but genuinely can't execute it (e.g. a platform-level
+        # execution block, not a code bug). Surfacing the exception via
+        # @warn costs nothing on the common/available path (unreached)
+        # and turns an opaque "false" into an actionable CI log line.
+        @warn "x13_binary_available(): invocation failed" path exception = (e, catch_backtrace())
         return false
     end
 end
