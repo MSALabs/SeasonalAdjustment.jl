@@ -133,6 +133,44 @@ function _run_python(case::CrossvalCase)
     return JSON_read(outpath)
 end
 
+"""
+    _r_calendar_available() -> Bool
+
+`true` if R plus `timeDate`/`bizdays`/`jsonlite` (Stage 2's own
+calendar-engine cross-validation packages, distinct from Stage 1's
+`seasonal`) are available right now -- never throws. A session could
+have one dependency set without the other (`seasonal` is a much larger,
+slower install than `timeDate`/`bizdays`), so this is checked
+separately from `_r_available()`, not assumed to imply it.
+"""
+function _r_calendar_available()
+    try
+        out = read(`$_RSCRIPT -e 'library(timeDate); library(bizdays); library(jsonlite); cat("OK")'`, String)
+        return occursin("OK", out)
+    catch
+        return false
+    end
+end
+
+"""
+    _run_r_calendar(input::Dict) -> Dict
+
+Runs `input` (see `r_calendar_helper.R`'s own module comment for the
+JSON contract) through R's `timeDate`/`bizdays` packages, returning the
+parsed JSON result dict. Throws if R itself can't be invoked --
+callers should check `_r_calendar_available()` first.
+"""
+function _run_r_calendar(input::AbstractDict)
+    indir = mktempdir()
+    inpath = joinpath(indir, "in.json")
+    outpath = joinpath(indir, "out.json")
+    open(inpath, "w") do io
+        JSON_write(io, input)
+    end
+    run(`$_RSCRIPT $(joinpath(_EXTENDED_DIR, "r_calendar_helper.R")) $inpath $outpath`)
+    return JSON_read(outpath)
+end
+
 # ---------------------------------------------------------------------
 # A tiny, self-contained JSON reader/writer -- this package has no JSON
 # dependency (deliberately: parse_udg/parse_table are plain-text, not
@@ -143,16 +181,8 @@ end
 # use -- not a general-purpose JSON implementation.
 # ---------------------------------------------------------------------
 
-function JSON_write(io::IO, d::Dict)
-    print(io, "{")
-    first = true
-    for (k, v) in d
-        first || print(io, ",")
-        first = false
-        print(io, "\"", k, "\":")
-        _json_write_value(io, v)
-    end
-    print(io, "}")
+function JSON_write(io::IO, d::AbstractDict)
+    _json_write_value(io, d)
 end
 
 _json_write_value(io::IO, v::Nothing) = print(io, "null")
@@ -166,6 +196,22 @@ function _json_write_value(io::IO, v::AbstractVector)
         _json_write_value(io, x)
     end
     print(io, "]")
+end
+# Nested Dicts (e.g. one entry per {from,to} pair inside an array) need
+# their own dispatch, not just the top-level JSON_write entry point --
+# jsonlite's own default auto-simplifies a JSON array of same-shaped
+# objects into an R data.frame on read, which r_calendar_helper.R
+# relies on directly (`nrow(...)`, `...$from[i]`-style access).
+function _json_write_value(io::IO, d::AbstractDict)
+    print(io, "{")
+    first = true
+    for (k, v) in d
+        first || print(io, ",")
+        first = false
+        print(io, "\"", k, "\":")
+        _json_write_value(io, v)
+    end
+    print(io, "}")
 end
 
 function JSON_read(path::AbstractString)

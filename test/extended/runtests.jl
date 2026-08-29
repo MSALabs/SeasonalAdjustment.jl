@@ -11,4 +11,8 @@ include(joinpath(@__DIR__, "crossval_helpers.jl"))
 @testset "extended (R/Python cross-validated + extreme cases)" begin
     include(joinpath(@__DIR__, "test_x13_crossval.jl"))
     include(joinpath(@__DIR__, "test_spec_extreme.jl"))
+    include(joinpath(@__DIR__, "test_calendar_crossval.jl"))
+    include(joinpath(@__DIR__, "test_regressor_crossval.jl"))
+    include(joinpath(@__DIR__, "test_calendar_extreme.jl"))
+    include(joinpath(@__DIR__, "test_parse_extreme.jl"))
 end
