@@ -8,6 +8,7 @@ using Dates: Date, dayofweek  # NOT a blanket `using Dates` -- Dates also
 import Dates
 using BusinessDays
 using Random
+import StatsAPI
 
 # Each stage's own test file gets included here as it's implemented.
 # See development-sequence.md for the task sequence -- one @testset
@@ -21,6 +22,7 @@ using Random
     include("test_spec.jl")        # W.2
     include("test_run_parse.jl")   # W.3
     include("test_api.jl")         # W.4
+    include("test_diagnostics.jl") # W.5 -- diagnostics API and seasonal-parity functions
     include("test_quarterly.jl")   # quarterly interval support
 
     # Extended suite (R/Python-cross-validated extreme cases) -- opt-in

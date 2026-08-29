@@ -5,6 +5,8 @@ using Artifacts
 using LazyArtifacts
 using BusinessDays
 using TSAnalytics: tsvalues, tsindex
+import StatsAPI
+import StatsBase
 
 # ---------------------------------------------------------------------
 # Part 1: x13prebuilt wrapper (the active development track --
@@ -17,7 +19,13 @@ include("calendars.jl")    # W.0 -- India + major-market holiday calendars,
 include("spec.jl")         # W.2 -- .spc spec-file generation
 include("run.jl")          # W.3 -- subprocess invocation
 include("parse.jl")        # W.3 -- output-table parsing
+include("diagnostics.jl")  # W.5 -- typed .udg accessor layer (Dict-based;
+                            #        the X13Result-dispatching overloads live
+                            #        in api.jl, included next, since X13Result
+                            #        is defined there)
 include("api.jl")          # W.4 -- the user-facing x13(...) entry point
+                            # W.5 -- StatsAPI contract, series(), show(),
+                            #        select_order/open_output/import_spc
 
 # ---------------------------------------------------------------------
 # Part 2: native Julia engine (deferred -- see development-sequence.md,
@@ -41,5 +49,15 @@ export easter_date
 export X13Spec, render, validate!, write_spec, generate_specs
 export X13RunResult, run_x13, run_x13_batch
 export parse_table, parse_output, parse_udg
+
+# W.5 -- diagnostics accessor layer, StatsAPI contract, seasonal-parity
+# functions. StatsAPI generic functions (aic, bic, coef, ...) are used
+# fully-qualified (StatsAPI.aic(r), not aic(r)) -- not re-exported under
+# their bare names, to avoid silently shadowing whatever the caller's own
+# session already has `using StatsAPI`/`using StatsBase` for.
+export udg, transformfunction, arima_model, mstats, qs, outliers,
+    outlier_counts, fivebestmdl, seasonality_tests, residual_diagnostics,
+    spectral_peaks, filters
+export series, select_order, open_output, import_spc
 
 end # module

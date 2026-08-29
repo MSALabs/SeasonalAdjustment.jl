@@ -38,6 +38,43 @@ parse_output
 parse_udg
 ```
 
+## Diagnostics (W.5)
+
+Typed accessors over `.udg`, matching R's `seasonal` package. Each
+accepts either a raw `Dict` (fixture/testable with no binary) or an
+`X13Result` directly.
+
+```@docs
+udg
+transformfunction
+arima_model
+mstats
+qs
+outliers
+outlier_counts
+fivebestmdl
+seasonality_tests
+residual_diagnostics
+spectral_peaks
+filters
+```
+
+## StatsAPI contract
+
+`X13Result` implements `StatsAPI.aic`/`bic`/`aicc`/`loglikelihood`/
+`nobs`/`residuals`/`coef`/`coefnames`/`stderror`/`dof` -- use these
+fully-qualified (`StatsAPI.aic(r)`), not re-exported under their bare
+names. `StatsAPI.vcov` always throws (`.udg` has no covariance matrix).
+
+## Seasonal-parity functions
+
+```@docs
+series
+select_order
+open_output
+import_spc
+```
+
 ## Binary artifact management
 
 ```@docs

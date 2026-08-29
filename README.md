@@ -60,6 +60,28 @@ adjustment:
 result = x13(quarterly_gdp; period=4, seasonal_order=(0,1,1,4))
 ```
 
+`X13Result` also carries the full `.udg` diagnostics dump the real
+binary produces, through a typed accessor layer (matching R's own
+`seasonal` package: `qs`, `outliers`, `fivebestmdl`, `mstats`,
+`seasonality_tests`, and the `StatsAPI` contract -- `aic`, `bic`,
+`coef`, `coefnames`, ...):
+
+```julia
+using StatsAPI
+
+StatsAPI.aic(result)                 # 946.66...
+qs(result).sa                        # (statistic=, pvalue=) QS test on the SA series
+outliers(result; full=true)          # every auto-detected outlier, with estimate/se/t
+series(result, :d8)                  # re-runs automatically if :d8 wasn't in `save`
+```
+
+Any spec block without a dedicated keyword (`forecast`, `slidingspans`,
+`history`, ...) is reachable via `spec_args`:
+
+```julia
+x13(y; spec_args = Dict("forecast.maxlead" => "0"))
+```
+
 ## License
 
 MIT for this package's own code. The bundled `x13prebuilt` binary is

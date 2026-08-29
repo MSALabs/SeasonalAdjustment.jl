@@ -39,6 +39,9 @@ struct X13Spec
     exog::Union{Nothing,Vector{Float64}}              # a generic companion regressor (also triggers a regression block)
     aictest::Vector{Symbol}                            # e.g. [:td, :easter]
     residuals::Bool                                     # estimate { save = (rsd) } -- regARIMA residuals, W.4 addendum
+    spec_args::Dict{String,String}                      # W.5.4: raw "block.setting"=>"value" passthrough for any
+                                                          # spec block with no typed field (forecast, slidingspans,
+                                                          # history, check, pickmdl, force, ...); see render/validate!
 end
 
 """
@@ -47,7 +50,8 @@ end
             maxorder=nothing, maxdiff=nothing, x11_mode=nothing, seats=false,
             save=nothing, trading=false, regression_variables=String[],
             regression_user=nothing, regression_usertype=nothing, regression_user_name=:user1,
-            exog=nothing, aictest=Symbol[], residuals=false) -> X13Spec
+            exog=nothing, aictest=Symbol[], residuals=false,
+            spec_args=Dict{String,String}()) -> X13Spec
 
     X13Spec(base::X13Spec; kwargs...) -> X13Spec
 
@@ -88,6 +92,28 @@ directly against the real binary (`handoff/udg_and_residuals/`) that
 regARIMA residuals are saved from `estimate{}`, a distinct spec block
 from `x11{}`/`seats{}`, since they're a property of the underlying
 model fit rather than the decomposition step.
+
+`spec_args` (W.5.4) is a raw `"block.setting" => "value"` passthrough
+for any spec block with no typed field of its own (`forecast`,
+`slidingspans`, `history`, `check`, `pickmdl`, `force`, ...) -- see
+[`render`](@ref)'s own docstring for the exact rendering rules and
+[`validate!`](@ref) for why a key naming a block this struct ALREADY
+renders via a typed field (`transform`, `x11`, `automdl`, `regression`,
+`estimate`, `series`, `arima`, `seats`, `outlier`) throws rather than
+silently creating two sources of truth for one block. Values are
+rendered verbatim, exactly like `arima_model`'s own raw passthrough --
+`validate!` does not parse or catch a syntax error inside a `spec_args`
+value, the binary will.
+
+**The `forecast.maxlead` default is deliberately NOT forced to `0`.**
+Both R's `seasonal` and the Python `statsmodels` reference pipeline force
+`forecast.maxlead = 0` whenever a user regressor is present, because R's
+`seasonal` cannot extend a user regressor past the sample end. This
+package embeds regressor data inline and `validate!`'s own rule 4
+already requires `regression_user` to cover the series plus one forecast
+horizon -- so this package genuinely CAN extend and forecast properly,
+and changing nothing by default preserves that. Callers wanting R/Python
+parity write `spec_args = Dict("forecast.maxlead" => "0")` explicitly.
 """
 function X13Spec(
     y::AbstractVector{<:Real};
@@ -113,6 +139,7 @@ function X13Spec(
     exog::Union{Nothing,AbstractVector{<:Real}} = nothing,
     aictest::AbstractVector{Symbol} = Symbol[],
     residuals::Bool = false,
+    spec_args::AbstractDict{<:AbstractString,<:AbstractString} = Dict{String,String}(),
 )
     spec = X13Spec(
         Float64.(collect(y)),
@@ -138,6 +165,7 @@ function X13Spec(
         exog === nothing ? nothing : Float64.(collect(exog)),
         collect(aictest),
         residuals,
+        Dict{String,String}(spec_args),
     )
     validate!(spec)
     return spec
@@ -176,6 +204,15 @@ preventing -- fast, native, BEFORE any subprocess round-trip:
    the historical length.
 5. `transform = :log` is required whenever a regression block is
    combined with `x11_mode` in `(:multiplicative, :logadditive)`.
+6. `spec_args` (W.5.4) can't name a block (`transform`, `x11`, `automdl`,
+   `regression`, `estimate`, `series`, `arima`, `seats`, `outlier`) this
+   struct already renders via a typed field -- two sources of truth for
+   one block is a silent-misconfiguration risk worth failing loudly on,
+   not a real binary error to reproduce. A dotless `spec_args` key (no
+   `block.setting` shape) must have an empty value -- it renders an
+   empty block (`"slidingspans" => ""` -> `slidingspans { }`); a
+   non-empty value on a dotless key has no defined shape and is rejected
+   rather than guessed at.
 """
 function validate!(spec::X13Spec)
     spec.x11_mode === nothing || haskey(_X11_MODE_KEYWORDS, spec.x11_mode) || throw(ArgumentError(
@@ -235,8 +272,33 @@ function validate!(spec::X13Spec)
         ))
     end
 
+    for (k, v) in spec.spec_args
+        dot = findfirst('.', k)
+        blockname = dot === nothing ? k : k[1:prevind(k, dot)]
+        blockname in _TYPED_SPEC_BLOCKS && throw(ArgumentError(
+            "spec_args key \"$k\" targets the \"$blockname\" block, which X13Spec already " *
+            "renders via a typed field ($(join(sort(collect(_TYPED_SPEC_BLOCKS)), ", "))) -- " *
+            "use that field instead of spec_args for this block, to avoid two sources of " *
+            "truth for the same spec block",
+        ))
+        dot === nothing && !isempty(v) && throw(ArgumentError(
+            "spec_args key \"$k\" has no '.' (no block.setting shape) but a non-empty value " *
+            "\"$v\" -- a dotless key is only defined for an EMPTY block (spec_args[\"$k\"] = " *
+            "\"\" renders \"$k { }\"); give it a \"$k.setting\" shape instead if you meant a " *
+            "real setting",
+        ))
+    end
+
     return spec
 end
+
+# Blocks X13Spec already renders via a dedicated typed field -- a
+# spec_args key targeting one of these throws in validate! above rather
+# than silently creating a second, conflicting source of truth for it.
+const _TYPED_SPEC_BLOCKS = Set([
+    "transform", "x11", "automdl", "regression", "estimate", "series",
+    "arima", "seats", "outlier",
+])
 
 # X-13's x11{mode=...} keyword is the SHORT form -- confirmed directly
 # by hitting a real parse error using the full word ("Argument name
@@ -290,7 +352,23 @@ working against the real binary throughout this project's development
 (`series { ... }`, `transform { function = ... }`, `regression { ... }`,
 `arima { model = ... }`, `automdl { }`, `outlier { }`,
 `estimate { save = (rsd) }`, `x11 { ... }` / `seats { ... }`, each block
-only emitted if relevant).
+only emitted if relevant, followed by any `spec_args` (W.5.4) blocks).
+
+`spec_args` rendering rules (validated against a block collision at
+`validate!` time, not here -- see [`validate!`](@ref)):
+
+1. Keys are grouped by the part before the first `.` -- that's the block
+   name (`"forecast.maxlead"` -> block `forecast`, setting `maxlead`).
+2. A key with NO dot and an EMPTY value renders as an empty block:
+   `spec_args["slidingspans"] = ""` -> `slidingspans { }`. A dotless key
+   with a NON-empty value is rejected (ambiguous -- there's no defined
+   shape for it) rather than guessed at.
+3. Values are emitted VERBATIM, no quoting or escaping -- a raw
+   passthrough exactly like `arima_model`'s own.
+4. Blocks and, within a block, settings are emitted in sorted-key order
+   -- `spec_args` is a plain `Dict`, whose iteration order Julia does not
+   guarantee, so sorting is what makes `render`'s output reproducible
+   across runs.
 """
 function render(spec::X13Spec)
     io = IOBuffer()
@@ -361,7 +439,41 @@ function render(spec::X13Spec)
         end
     end
 
+    _render_spec_args(io, spec.spec_args)
+
     return String(take!(io))
+end
+
+function _render_spec_args(io::IO, spec_args::AbstractDict{String,String})
+    isempty(spec_args) && return
+    blocks = Dict{String,Vector{Tuple{String,String}}}()
+    empty_blocks = String[]
+    for (k, v) in spec_args
+        dot = findfirst('.', k)
+        if dot === nothing
+            isempty(v) || throw(ArgumentError(
+                "spec_args key \"$k\" has no '.' (no block.setting shape) but a non-empty " *
+                "value \"$v\" -- a dotless key is only defined for an EMPTY block " *
+                "(spec_args[\"$k\"] = \"\" renders \"$k { }\"); give it a \"$k.setting\" " *
+                "shape instead if you meant a real setting",
+            ))
+            push!(empty_blocks, k)
+        else
+            blockname = k[1:prevind(k, dot)]
+            subkey = k[nextind(k, dot):end]
+            push!(get!(blocks, blockname, Tuple{String,String}[]), (subkey, v))
+        end
+    end
+    for blockname in sort(collect(keys(blocks)))
+        println(io, "$blockname {")
+        for (subkey, v) in sort(blocks[blockname]; by = first)
+            println(io, "  $subkey = $v")
+        end
+        println(io, "}")
+    end
+    for blockname in sort(empty_blocks)
+        println(io, "$blockname { }")
+    end
 end
 
 """
