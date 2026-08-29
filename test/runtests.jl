@@ -23,6 +23,7 @@ import StatsAPI
     include("test_run_parse.jl")   # W.3
     include("test_api.jl")         # W.4
     include("test_diagnostics.jl") # W.5 -- diagnostics API and seasonal-parity functions
+    include("test_plots.jl")       # W.6 -- RecipesBase.jl plot recipes
     include("test_quarterly.jl")   # quarterly interval support
 
     # Extended suite (R/Python-cross-validated extreme cases) -- opt-in

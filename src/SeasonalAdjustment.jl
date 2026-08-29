@@ -7,6 +7,7 @@ using BusinessDays
 using TSAnalytics: tsvalues, tsindex
 import StatsAPI
 import StatsBase
+using RecipesBase
 
 # ---------------------------------------------------------------------
 # Part 1: x13prebuilt wrapper (the active development track --
@@ -26,6 +27,7 @@ include("diagnostics.jl")  # W.5 -- typed .udg accessor layer (Dict-based;
 include("api.jl")          # W.4 -- the user-facing x13(...) entry point
                             # W.5 -- StatsAPI contract, series(), show(),
                             #        select_order/open_output/import_spc
+include("plots.jl")        # W.6 -- RecipesBase.jl plot recipes
 
 # ---------------------------------------------------------------------
 # Part 2: native Julia engine (deferred -- see development-sequence.md,
@@ -57,7 +59,14 @@ export parse_table, parse_output, parse_udg
 # session already has `using StatsAPI`/`using StatsBase` for.
 export udg, transformfunction, arima_model, mstats, qs, outliers,
     outlier_counts, fivebestmdl, seasonality_tests, residual_diagnostics,
-    spectral_peaks, filters
+    spectral_peaks, filters, nobs_effective, spectrum_peaks
 export series, select_order, open_output, import_spc
+
+# W.6 -- plot recipes. `plot`/`plot!` themselves are NOT exported (or
+# even defined) here -- they belong to whatever plotting backend the
+# caller loads (Plots.jl, a Makie backend, ...); this package only adds
+# a method via `@recipe function f(r::X13Result; ...)`, which that
+# backend's own `plot(r)` picks up automatically once loaded.
+export residplot, monthplot, spectrumplot
 
 end # module

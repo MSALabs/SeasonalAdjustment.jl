@@ -83,7 +83,10 @@ itself fails, rather than returning a half-populated result.
 tables; use [`X13Spec`](@ref)/[`run_x13`](@ref)/[`parse_output`](@ref)
 directly for a custom, partial table selection. `residuals` is rejected
 the same way and for the same reason -- `x13()` always requests it (see
-[`X13Result`](@ref)).
+[`X13Result`](@ref)). For a non-SEATS spec, `:d8` (final unmodified SI
+ratios) is ALSO always saved alongside D10-D13 (W.6) -- not one of
+`X13Result`'s own fields, but present on disk so [`monthplot`](@ref)'s
+SI-ratio overlay never needs to re-run for an `x13()`-produced result.
 """
 function x13(
     y;
@@ -119,9 +122,19 @@ function x13(
         nothing
     end
 
+    # W.6: :d8 (final unmodified SI ratios) is always saved alongside the
+    # D10-D13 quartet for a non-SEATS spec -- SEATS has no D8-equivalent
+    # table at all, confirmed by X-11's own SI-ratio concept simply not
+    # applying to SEATS' ARIMA-model-based decomposition. This is what lets
+    # `monthplot`'s SI-ratio overlay avoid a re-run for any `x13()`-produced
+    # result; a hand-built `X13Spec`/`run_x13` run still needs `series(r,
+    # :d8)`'s own automatic re-run (or an explicit `save=` including `:d8`).
+    is_seats = get(kwargs, :seats, false)
+    default_save = is_seats ? nothing : [:d10, :d11, :d12, :d13, :d8]
+
     spec = resolved_start === nothing ?
-        X13Spec(yv; period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, kwargs...) :
-        X13Spec(yv; start = resolved_start, period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, kwargs...)
+        X13Spec(yv; period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, save = default_save, kwargs...) :
+        X13Spec(yv; start = resolved_start, period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, save = default_save, kwargs...)
 
     spec_path = write_spec(spec, joinpath(mktempdir(), "series.spc"))
     run_result = run_x13(spec_path; udg = true)
@@ -261,6 +274,8 @@ seasonality_tests(r::X13Result) = seasonality_tests(r.udg)
 residual_diagnostics(r::X13Result) = residual_diagnostics(r.udg)
 spectral_peaks(r::X13Result) = spectral_peaks(r.udg)
 filters(r::X13Result) = filters(r.udg)
+nobs_effective(r::X13Result) = nobs_effective(r.udg)
+spectrum_peaks(r::X13Result; series::Symbol = :sa) = spectrum_peaks(r.udg; series = series)
 
 """
     _coefficient_lines(path) -> Vector{NamedTuple}
@@ -504,6 +519,79 @@ function series(r::X13Result, tables::AbstractVector{Symbol}; reeval::Bool = tru
 end
 
 series(r::X13Result, table::Symbol; reeval::Bool = true) = series(r, [table]; reeval = reeval)[table]
+
+# ---------------------------------------------------------------------
+# W.6 -- spectrum-curve fetching for spectrumplot. Deliberately NOT
+# folded into series()/_KNOWN_TABLES: the spectrum tables (.sp0/.sp1/
+# .sp2/.spr) come from the `spectrum{save=(...)}` spec block, not X-11's
+# `x11{save=(...)}`/SEATS' `seats{save=(...)}` -- series()'s own re-run
+# logic only extends THAT `save` list, so requesting a spectrum table
+# needs its own small re-run path via `spec_args` instead (confirmed
+# directly: `spectrum{save=(sp0 sp1 sp2 spr)}`, in that block, not any
+# existing typed field, produces the 4 files, plus a bonus `.str` Tukey-
+# spectrum file that isn't currently exposed here since no accessor
+# needs it yet).
+# ---------------------------------------------------------------------
+
+const _SPECTRUM_TABLE_FOR_SERIES = Dict(:original => :sp0, :sa => :sp1, :irregular => :sp2, :residual => :spr)
+
+"""
+    _parse_spectrum_table(path) -> Vector{NamedTuple}
+
+Parses a `.sp0`/`.sp1`/`.sp2`/`.spr` file -- confirmed directly against
+the real binary this is a DIFFERENT 3-column shape (`Pos\tFrequency\tValue`)
+than `parse_table`'s own 2-column `date\tvalue` tables, so it needs its
+own reader rather than reusing `parse_table`.
+"""
+function _parse_spectrum_table(path::AbstractString)
+    lines = readlines(path)
+    out = NamedTuple[]
+    for line in @view lines[3:end]
+        isempty(strip(line)) && continue
+        parts = split(line, '\t')
+        length(parts) >= 3 || continue
+        freq = tryparse(Float64, parts[2])
+        val = tryparse(Float64, parts[3])
+        (freq === nothing || val === nothing) && continue
+        push!(out, (freq = freq, value = val))
+    end
+    return out
+end
+
+"""
+    _spectrum_series(r::X13Result, series::Symbol) -> Vector{NamedTuple}
+
+`(freq=, value=)` pairs -- the actual spectrum curve `spectrumplot`
+(W.6) draws, for `series` in `(:original, :sa, :irregular, :residual)`
+(mapping to the real, confirmed table codes `sp0`/`sp1`/`sp2`/`spr`).
+Re-runs (announced via `@info`, same convention as [`series`](@ref)) and
+requests ALL FOUR tables at once if the needed one isn't already present
+-- so a second `spectrumplot(r; series=...)` call for a DIFFERENT series
+on the same `r` still needs its own re-run (`X13Result` isn't mutable,
+see `series`'s own docstring for why this isn't cached), but at least
+doesn't re-run once per series if all four happen to be requested via
+one shared, pre-fetched result.
+"""
+function _spectrum_series(r::X13Result, series::Symbol)
+    haskey(_SPECTRUM_TABLE_FOR_SERIES, series) || throw(ArgumentError(
+        "spectrumplot: series=:$series isn't recognized -- must be :original, :sa, " *
+        ":irregular, or :residual",
+    ))
+    table = _SPECTRUM_TABLE_FOR_SERIES[series]
+    path = joinpath(r.run_result.dir, "$(r.run_result.basename).$table")
+    if !isfile(path)
+        @info "spectrumplot(): re-running to save spectrum table(s)" table
+        merged_spec_args = merge(r.spec.spec_args, Dict("spectrum.save" => "(sp0 sp1 sp2 spr)"))
+        new_spec = X13Spec(r.spec; spec_args = merged_spec_args)
+        newpath = write_spec(new_spec, joinpath(mktempdir(), "spectrum_rerun.spc"))
+        result = run_x13(newpath)
+        result.success || throw(ErrorException(
+            "spectrumplot() re-run failed: " * join(result.errors, "; "),
+        ))
+        path = joinpath(result.dir, "$(result.basename).$table")
+    end
+    return _parse_spectrum_table(path)
+end
 
 """
     select_order(y; kwargs...) -> NamedTuple

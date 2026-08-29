@@ -250,27 +250,34 @@ if x13_binary_available()
 
 @testset "series() -- re-runs for an unsaved table" begin
     r = x13(AIRLINE_Y; start = (1949, 1), seasonal_order = (0, 1, 1, 12))
-    @test !(:d8 in something(r.spec.save, Symbol[]))
-    d8 = series(r, :d8)
-    @test length(d8) == length(r.observed)
-    @test all(isfinite, d8)
+    # :d8 is now always in x13()'s own default save set (W.6, so
+    # monthplot's SI-ratio overlay never needs to re-run) -- :d9 is
+    # genuinely NOT saved by default, so it's the one that still
+    # exercises series()'s own automatic-re-run path here.
+    @test !(:d9 in something(r.spec.save, Symbol[]))
+    @test :d8 in something(r.spec.save, Symbol[])
+    d9 = series(r, :d9)
+    @test length(d9) == length(r.observed)
+    @test all(isfinite, d9)
 end
 
 @testset "series() -- already-saved table does NOT re-run" begin
     r = x13(AIRLINE_Y; start = (1949, 1), seasonal_order = (0, 1, 1, 12))
     @test series(r, :d10) == r.seasonal_factors
+    d8 = series(r, :d8)   # also already-saved (W.6's default), same no-re-run path
+    @test length(d8) == length(r.observed)
 end
 
 @testset "series(reeval=false) -- throws naming the table" begin
     r = x13(AIRLINE_Y; start = (1949, 1), seasonal_order = (0, 1, 1, 12))
-    @test_throws ArgumentError series(r, :d8; reeval = false)
+    @test_throws ArgumentError series(r, :d9; reeval = false)
 end
 
 @testset "series() -- vector form, one combined re-run" begin
     r = x13(AIRLINE_Y; start = (1949, 1), seasonal_order = (0, 1, 1, 12))
-    out = series(r, [:d8, :d9])
-    @test Set(keys(out)) == Set([:d8, :d9])
-    @test length(out[:d8]) == length(r.observed)
+    out = series(r, [:d9, :c17])
+    @test Set(keys(out)) == Set([:d9, :c17])
+    @test length(out[:d9]) == length(r.observed)
 end
 
 @testset "series() -- unknown table errors before spawning" begin

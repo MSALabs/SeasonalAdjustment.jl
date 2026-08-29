@@ -262,9 +262,16 @@ verbatim, reproducing the identical estimated coefficient; **do not**
 convert the month name to a number for `label`. `period`, by contrast, IS
 converted to an integer (`5` for `"May"`) purely for display/analysis --
 that field is never fed back into a spec, so the conversion doesn't
-contradict the `label` rule above. `period` is `nothing` if the trailing
-token isn't a recognized 3-letter month abbreviation (e.g. an unconfirmed
-quarterly-labeling scheme) -- left unresolved rather than guessed.
+contradict the `label` rule above. For a **quarterly** spec, confirmed
+directly this session (a real level-shift run, `period=4`): the trailing
+token is already a plain quarter-number integer (e.g. `"LS2010.1"`, not
+a month abbreviation) -- the existing `tryparse(Int, ...)` fallback below
+handles this correctly with no special-casing needed, and `period` here
+means "quarter number" for a quarterly spec the same way it means "month
+number" for a monthly one (see [`X13Spec`](@ref)'s own `start` field
+convention). `period` is `nothing` only for a genuinely unrecognized
+trailing token (neither a 3-letter month abbreviation nor a bare
+integer) -- left unresolved rather than guessed.
 
 | `full` | Element shape |
 |---|---|
@@ -413,4 +420,65 @@ function filters(d::AbstractDict)
         seasonal_ma = seasonal_ma, trend_ma = trend_ma, mode = mode,
         sa_mode = get(d, "samode", nothing), unit_root = get(d, "finalur", nothing),
     )
+end
+
+"""
+    nobs_effective(d) -> Union{Int,Nothing}
+
+`nefobs` -- the effective observation count AFTER differencing (131 in
+the committed fixture, vs. `StatsAPI.nobs`'s 144) -- distinct from plain
+`nobs` because ARIMA differencing costs observations. Needed by
+`residplot` (W.6): regARIMA residuals run to `nefobs`, not `nobs`, so the
+residual series is shorter than `r.observed`/`r.dates` by exactly that
+difference, confirmed directly against the fixture (144-131=13 fewer
+residual observations than the original series).
+"""
+nobs_effective(d::AbstractDict) = _udg_int(d, "nefobs")
+
+# W.6's own frequency grid -- the SAME five seasonal + two trading-day
+# frequencies are shared across all four spectra (original/SA/irregular/
+# residual); only the peak/nopeak VALUE differs per spectrum, confirmed
+# directly against the fixture (a single top-level "s1.freq"/"t1.freq"
+# family, not one per spcori/spcsa/spcirr/spcrsd prefix).
+const _SPECTRUM_LABELS = (:s1, :s2, :s3, :s4, :s5, :t1, :t2)
+const _SPECTRUM_UDG_PREFIX = Dict(:original => "spcori", :sa => "spcsa", :irregular => "spcirr", :residual => "spcrsd")
+
+"""
+    spectrum_peaks(d; series=:sa) -> Vector{NamedTuple}
+
+`(label=, freq=, significant=)` for each of the five seasonal (`:s1`-`:s5`)
+and two trading-day (`:t1`,`:t2`) frequencies X-13's own spectral
+analysis reports, for the given `series` (`:original`, `:sa`,
+`:irregular`, or `:residual`, mapping to the `.udg` prefixes `spcori`/
+`spcsa`/`spcirr`/`spcrsd`). `freq` is read from the SHARED top-level
+`s1.freq`..`t2.freq` family (confirmed directly: one frequency grid
+serves all four spectra, not one per series). `significant` is `true`
+only when the raw value has a trailing `"+"` flag (confirmed format:
+`"15.2 +"`; `"nopeak"` and a bare value with no flag both read `false`
+-- X-13's documentation describes a wider `+`/`-`/blank vocabulary than
+this fixture happens to exercise, so a `"-"` or blank flag is treated
+the same conservative way as no flag at all, not guessed to mean
+something more specific).
+
+Distinct from [`spectral_peaks`](@ref) (W.5), which only reports WHICH
+series has any significant peak at all, not which frequency -- this is
+the finer-grained data `spectrumplot` (W.6) needs for its frequency
+markers, explicitly deferred out of W.5's own scope for exactly this.
+"""
+function spectrum_peaks(d::AbstractDict; series::Symbol = :sa)
+    haskey(_SPECTRUM_UDG_PREFIX, series) || throw(ArgumentError(
+        "spectrum_peaks: series=:$series isn't recognized -- must be :original, :sa, " *
+        ":irregular, or :residual",
+    ))
+    prefix = _SPECTRUM_UDG_PREFIX[series]
+    out = NamedTuple[]
+    for label in _SPECTRUM_LABELS
+        freq = _udg_float(d, "$label.freq")
+        freq === nothing && continue
+        raw = get(d, "$prefix.$label", nothing)
+        raw === nothing && continue
+        significant = endswith(strip(raw), "+")
+        push!(out, (label = label, freq = freq, significant = significant))
+    end
+    return out
 end
