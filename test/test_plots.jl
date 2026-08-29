@@ -25,7 +25,24 @@ using Statistics: mean
 RecipesBase.is_key_supported(::Symbol) = true
 
 _apply(r; kw...) = RecipesBase.apply_recipe(Dict{Symbol,Any}(kw...), r)
-_apply_named(name::Symbol, args...; kw...) = RecipesBase.apply_recipe(Dict{Symbol,Any}(kw...), Val{name}, args...)
+
+# residplot/monthplot/spectrumplot are RecipesBase.@userplot wrappers,
+# not plain series-type (Val{:name}) recipes -- confirmed directly this
+# session that a plain series-type recipe does NOT work here, since
+# X13Result already has its own bare type recipe for plot(r), which
+# RecipesPipeline's own argument-type-based dispatch always applies
+# first, before `seriestype` is ever consulted (see residplot's own
+# docstring in src/plots.jl for the full real-binary-confirmed story).
+const _USERPLOT_WRAPPERS = Dict(
+    :residplot => SeasonalAdjustment.ResidPlot,
+    :monthplot => SeasonalAdjustment.MonthPlot,
+    :spectrumplot => SeasonalAdjustment.SpectrumPlot,
+)
+function _apply_named(name::Symbol, args...; kw...)
+    wrapper = get(_USERPLOT_WRAPPERS, name, nothing)
+    wrapper === nothing && throw(ArgumentError("_apply_named: unknown recipe :$name"))
+    return RecipesBase.apply_recipe(Dict{Symbol,Any}(kw...), wrapper(args))
+end
 
 const _PLOTS_DIR = joinpath(@__DIR__, "..", "handoff", "udg_and_residuals")
 

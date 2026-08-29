@@ -15,4 +15,5 @@ include(joinpath(@__DIR__, "crossval_helpers.jl"))
     include(joinpath(@__DIR__, "test_regressor_crossval.jl"))
     include(joinpath(@__DIR__, "test_calendar_extreme.jl"))
     include(joinpath(@__DIR__, "test_parse_extreme.jl"))
+    include(joinpath(@__DIR__, "test_plots_backend.jl"))   # W.6 Level 3 -- backend-gated, see its own header
 end

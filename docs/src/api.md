@@ -75,6 +75,24 @@ open_output
 import_spc
 ```
 
+## Plotting (W.6)
+
+`RecipesBase.jl` recipes -- load a plotting backend (`using Plots`, a
+Makie backend, ...) to actually draw. `plot(r::X13Result)` (R's own
+`plot.seas`/Python's `.plot()` in one recipe) needs no separate import;
+`residplot`/`monthplot`/`spectrumplot` are each a
+`RecipesBase.@userplot` wrapper (NOT a plain series-type recipe --
+`X13Result` already has its own bare type recipe for `plot(r)`, which
+would otherwise silently shadow a same-type series-type recipe; see
+`residplot`'s own docstring for the full, real-binary/real-backend-
+confirmed story).
+
+```@docs
+residplot
+monthplot
+spectrumplot
+```
+
 ## Binary artifact management
 
 ```@docs

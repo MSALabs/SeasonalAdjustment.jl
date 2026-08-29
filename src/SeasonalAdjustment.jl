@@ -67,6 +67,10 @@ export series, select_order, open_output, import_spc
 # caller loads (Plots.jl, a Makie backend, ...); this package only adds
 # a method via `@recipe function f(r::X13Result; ...)`, which that
 # backend's own `plot(r)` picks up automatically once loaded.
-export residplot, monthplot, spectrumplot
+# `residplot`/`monthplot`/`spectrumplot` are NOT exported here -- each is
+# auto-exported by its own `RecipesBase.@userplot` invocation in
+# plots.jl (confirmed directly: @userplot's own macro-generated code
+# includes `export $funcname, $funcname!`), so a second manual export
+# here would just be redundant.
 
 end # module

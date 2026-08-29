@@ -82,6 +82,17 @@ Any spec block without a dedicated keyword (`forecast`, `slidingspans`,
 x13(y; spec_args = Dict("forecast.maxlead" => "0"))
 ```
 
+Plot recipes (`RecipesBase.jl` -- zero dependencies of its own; load a
+real backend to draw):
+
+```julia
+using Plots
+plot(result)                 # original + seasonally adjusted, R's plot.seas
+residplot(result)            # regARIMA residuals
+monthplot(result)            # seasonal factors by calendar period, with SI-ratio stems
+spectrumplot(result)         # spectral peaks -- neither R nor Python ships this one
+```
+
 ## License
 
 MIT for this package's own code. The bundled `x13prebuilt` binary is

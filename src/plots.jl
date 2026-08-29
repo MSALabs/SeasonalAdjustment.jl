@@ -223,8 +223,33 @@ Adds a zero reference line (R doesn't draw one; regARIMA residuals are
 mean-zero by construction and it costs nothing).
 
 Throws `ArgumentError` if `r.residuals` is empty.
+
+**A real, confirmed architectural finding, not in the handoff at all**:
+`residplot`/`monthplot`/`spectrumplot` can NOT be plain series-type
+recipes (`@recipe function f(::Type{Val{:name}}, r::X13Result; ...)`) as
+the handoff specified, because `X13Result` ALSO has its own bare type
+recipe (for `plot(r)`) -- confirmed directly this session (a real
+Plots.jl/GR smoke test where `residplot(r)` silently rendered `plot(r)`'s
+OWN series instead of the residual data, byte-identical PNG output,
+caught only by hashing the actual rendered images, not by
+`RecipesBase.apply_recipe`-based structural testing, which does not
+exercise the real `plot`/`residplot`/... entry-point functions at all).
+`RecipesPipeline`'s own `_process_userrecipes!` dispatches
+`apply_recipe(attrs, args...)` on ARGUMENT TYPES alone, before
+`seriestype` is ever consulted -- so a bare type recipe on `X13Result`
+always intercepts every call involving one, regardless of what
+`seriestype` a caller requested. The standard, correct fix (used
+throughout the Plots.jl ecosystem for exactly this "named plot for a
+type that already has its own generic recipe" situation) is
+`RecipesBase.@userplot`: a small wrapper struct is the recipe's real
+dispatch target instead of `X13Result` directly, sidestepping the
+conflict by construction. `RecipesBase.@userplot ResidPlot` also
+auto-exports `residplot`/`residplot!` -- see [`SeasonalAdjustment`](@ref)'s
+own module file, which does NOT separately export these names itself.
 """
-@recipe function f(::Type{Val{:residplot}}, r::X13Result; outliers = true)
+RecipesBase.@userplot ResidPlot
+@recipe function f(rp::ResidPlot; outliers = true)
+    r = rp.args[1]
     isempty(r.residuals) && throw(ArgumentError("residplot: this X13Result has no residuals"))
     n = length(r.residuals)
     dts = r.dates[end-n+1:end]
@@ -271,8 +296,13 @@ D8 is fetched via [`series`](@ref)`(r, :d8)` -- already present with no
 re-run for any `x13()`-produced result (W.6 added `:d8` to `x13()`'s
 always-saved set for exactly this); a hand-built `X13Spec`/`run_x13`
 result triggers `series`'s own automatic (and announced) re-run instead.
+
+Implemented via `RecipesBase.@userplot` (see [`residplot`](@ref)'s own
+docstring for exactly why a plain series-type recipe doesn't work here).
 """
-@recipe function f(::Type{Val{:monthplot}}, r::X13Result; choice = :seasonal, siratios = true)
+RecipesBase.@userplot MonthPlot
+@recipe function f(mp::MonthPlot; choice = :seasonal, siratios = true)
+    r = mp.args[1]
     choice in (:seasonal, :irregular) || throw(ArgumentError(
         "monthplot: choice=:$choice isn't recognized -- must be :seasonal or :irregular",
     ))
@@ -341,8 +371,13 @@ itself reports as a visually significant peak (see [`spectrum_peaks`](@ref)).
 | Keyword | Values | Default | Meaning |
 |---|---|---|---|
 | `series` | `:original`, `:sa`, `:irregular`, `:residual` | `:sa` | Which spectrum |
+
+Implemented via `RecipesBase.@userplot` (see [`residplot`](@ref)'s own
+docstring for exactly why a plain series-type recipe doesn't work here).
 """
-@recipe function f(::Type{Val{:spectrumplot}}, r::X13Result; series = :sa)
+RecipesBase.@userplot SpectrumPlot
+@recipe function f(sp::SpectrumPlot; series = :sa)
+    r = sp.args[1]
     haskey(_SPECTRUM_UDG_PREFIX, series) || throw(ArgumentError(
         "spectrumplot: series=:$series isn't recognized -- must be :original, :sa, :irregular, or :residual",
     ))
@@ -370,6 +405,3 @@ itself reports as a visually significant peak (see [`spectrum_peaks`](@ref)).
     end
 end
 
-RecipesBase.@shorthands residplot
-RecipesBase.@shorthands monthplot
-RecipesBase.@shorthands spectrumplot
