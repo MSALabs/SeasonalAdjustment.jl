@@ -32,3 +32,52 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.develop(url="https://github.com/MSALabs/TSAnalytics.jl")'
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+
+  # Stage 3 of the extended, R/Python-cross-validated test suite (see
+  # development-sequence.md's "Extended test suite" sections for the
+  # full methodology and every real bug found building it). Runs ONCE,
+  # on ubuntu-latest only, not multiplied across the `test` job's
+  # 6-way platform/Julia-version matrix -- the cross-validation itself
+  # tests spec-equivalence against R/Python, not platform-specific
+  # behavior, so installing R+Python+seasonal+statsmodels six times per
+  # push would be pure waste. Gated behind SEASONALADJUSTMENT_EXTENDED_TESTS=1
+  # so the ordinary `test` job above (and any local `Pkg.test()`) never
+  # needs any of this installed.
+  extended:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Develop unregistered TSAnalytics.jl dependency
+        run: julia --project=. -e 'using Pkg; Pkg.develop(url="https://github.com/MSALabs/TSAnalytics.jl")'
+      - uses: julia-actions/julia-buildpkg@v1
+      # Resolves the real x13ashtml artifact this job's own Julia
+      # install just downloaded, so R (via X13_PATH, the env var
+      # `seasonal` itself reads -- confirmed directly, the same
+      # mechanism this suite's own local WSL development used
+      # throughout) and Python (via crossval_helpers.jl's own
+      # `_X13_BIN_DIR`, a same-named symlink it creates automatically,
+      # no CI-specific wiring needed there) both point at the SAME
+      # binary the `test` job's own real-binary tests already verify.
+      - name: Resolve the real x13ashtml binary path for R/Python
+        run: |
+          BINDIR=$(julia --project=. -e 'using SeasonalAdjustment; print(dirname(x13_binary_path()))')
+          echo "X13_PATH=$BINDIR" >> "$GITHUB_ENV"
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+      - name: Install R packages (seasonal, jsonlite, timeDate, bizdays)
+        run: |
+          Rscript -e 'install.packages(c("seasonal", "jsonlite", "timeDate", "bizdays"), repos = "https://cloud.r-project.org")'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Python packages (statsmodels)
+        run: pip install statsmodels
+      - name: Run extended test suite
+        env:
+          SEASONALADJUSTMENT_EXTENDED_TESTS: '1'
+        run: julia --project=. -e 'using Pkg; Pkg.test()'
