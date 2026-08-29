@@ -51,6 +51,15 @@ result.trend
 result.seasonal_factors
 ```
 
+Monthly (`period=12`, the default) and quarterly (`period=4`) series are
+both supported — confirmed directly against the real binary that these
+are the only two periods X-13ARIMA-SEATS accepts for seasonal
+adjustment:
+
+```julia
+result = x13(quarterly_gdp; period=4, seasonal_order=(0,1,1,4))
+```
+
 ## License
 
 MIT for this package's own code. The bundled `x13prebuilt` binary is

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat \"/c/Users/user/AppData/Local/Temp/claude/c--Users-user-Documents-MSA-Consulting-XKDR-TSA-SeasonalAdjustment-jl/8d7fb66e-3932-4b89-8483-2b6c386920aa/tasks/bb30wr11r.output\" 2>&1)",
+      "Read(//c/Users/user/AppData/Local/Temp/claude/c--Users-user-Documents-MSA-Consulting-XKDR-TSA-SeasonalAdjustment-jl/8d7fb66e-3932-4b89-8483-2b6c386920aa/tasks/**)",
+      "Bash(cat \"/c/Users/user/AppData/Local/Temp/claude/c--Users-user-Documents-MSA-Consulting-XKDR-TSA-SeasonalAdjustment-jl/8d7fb66e-3932-4b89-8483-2b6c386920aa/tasks/bfnbldmwb.output\" 2>&1 | tail -150)",
+      "Bash(cat \"/c/Users/user/AppData/Local/Temp/claude/c--Users-user-Documents-MSA-Consulting-XKDR-TSA-SeasonalAdjustment-jl/8d7fb66e-3932-4b89-8483-2b6c386920aa/tasks/bozd4azbf.output\" 2>&1 | tail -20)",
+      "Bash(cat \"/c/Users/user/AppData/Local/Temp/claude/c--Users-user-Documents-MSA-Consulting-XKDR-TSA-SeasonalAdjustment-jl/8d7fb66e-3932-4b89-8483-2b6c386920aa/tasks/bozd4azbf.output\" 2>&1 | tail -5)",
+      "Bash(cat \"/c/Users/user/AppData/Local/Temp/claude/c--Users-user-Documents-MSA-Consulting-XKDR-TSA-SeasonalAdjustment-jl/8d7fb66e-3932-4b89-8483-2b6c386920aa/tasks/bbvxf1vb3.output\" 2>&1 | tail -40)",
+      "Bash(cat \"/c/Users/user/AppData/Local/Temp/claude/c--Users-user-Documents-MSA-Consulting-XKDR-TSA-SeasonalAdjustment-jl/8d7fb66e-3932-4b89-8483-2b6c386920aa/tasks/bfmpxq0pq.output\" 2>&1 | tail -40)"
+    ]
+  }
+}

@@ -21,6 +21,7 @@ using Random
     include("test_spec.jl")        # W.2
     include("test_run_parse.jl")   # W.3
     include("test_api.jl")         # W.4
+    include("test_quarterly.jl")   # quarterly interval support
 
     # Extended suite (R/Python-cross-validated extreme cases) -- opt-in
     # only, see test/extended/runtests.jl's own module comment. Kept out

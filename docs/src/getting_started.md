@@ -84,9 +84,33 @@ before any subprocess is ever spawned:
 julia> using SeasonalAdjustment
 
 julia> x13(collect(1.0:24.0))   # x13prebuilt itself requires >= 36 months (3 complete years)
-ERROR: ArgumentError: series has 24 observations, but x13prebuilt requires at least 36 months (3 complete years) of data -- confirmed directly against the real binary's own error: "Series to be modelled and/or seasonally adjusted must have at least 3 complete years of data."
+ERROR: ArgumentError: series has 24 observations, but x13prebuilt requires at least 36 months (3 complete years) of data -- confirmed directly against the real binary's own error (identical wording for both period=12 and period=4, just scaled): "Series to be modelled and/or seasonally adjusted must have at least 3 complete years of data."
 [...]
 ```
+
+## Monthly and quarterly series
+
+X-13ARIMA-SEATS accepts exactly two seasonal periods — `period=12`
+(monthly, the default) and `period=4` (quarterly) — confirmed directly
+against the real binary's own error when anything else is tried
+(`"Seasonal period must be 4 or 12 if a seasonal adjustment is done"`).
+`start`'s second element is a subperiod in `1:period` (a quarter number
+1-4, not a month, when `period=4`); output tables/residuals are parsed
+back the same way (`YYYYQQ` instead of `YYYYMM`), and the minimum-length
+requirement scales with `period` (12 quarters for quarterly, same "3
+complete years" rule as monthly's 36 months):
+
+```julia
+result = x13(quarterly_gdp; start=(1990, 1), period=4, seasonal_order=(0,1,1,4))
+```
+
+**One confirmed, honest gap**: [`trading_day_regressors`](@ref)'s
+quarterly output (`freq=:quarter`) always has 6 columns, matching
+monthly's shape — the real binary's own quarterly `.rmx` export has a
+7th "Leap Year" column that this function does not reproduce. Not an
+issue for feeding a *user*-defined regressor into a spec (X-13 doesn't
+require the extra column there), just not a byte-for-byte replica of
+X-13's own internal quarterly `td` regressor.
 
 ## India-aware calendar effects
 

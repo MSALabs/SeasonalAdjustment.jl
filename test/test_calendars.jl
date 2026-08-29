@@ -96,7 +96,19 @@ end
     @test size(m) == (1, 6)
     @test m[1, :] == Float64[5, 5, 5, 4, 4, 0]  # each column already minus Sunday's count of 0
 
-    @test_throws ArgumentError trading_day_regressors(Date(2024, 1, 1), Date(2024, 1, 31), noholiday; freq = :quarter)
+    # freq=:quarter is now supported (quarterly interval support) -- a
+    # quarter's counts must equal the sum of its three constituent
+    # months' counts, since both are just business-day tallies over the
+    # same underlying days.
+    q1 = trading_day_regressors(Date(2024, 1, 1), Date(2024, 3, 31), noholiday; freq = :quarter)
+    @test size(q1) == (1, 6)
+    jan = trading_day_regressors(Date(2024, 1, 1), Date(2024, 1, 31), noholiday)
+    feb = trading_day_regressors(Date(2024, 2, 1), Date(2024, 2, 29), noholiday)
+    mar = trading_day_regressors(Date(2024, 3, 1), Date(2024, 3, 31), noholiday)
+    @test q1[1, :] == jan[1, :] .+ feb[1, :] .+ mar[1, :]
+
+    # an actually-unsupported freq still throws clearly
+    @test_throws ArgumentError trading_day_regressors(Date(2024, 1, 1), Date(2024, 1, 31), noholiday; freq = :week)
 end
 
 @testset "trading_day_regressors -- INDIA_NSE holiday suppresses exactly one weekday count" begin

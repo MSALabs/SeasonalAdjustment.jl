@@ -17,7 +17,8 @@ field container.
 """
 struct X13Spec
     y::Vector{Float64}
-    start::Tuple{Int,Int}                          # (year, period); period is always 1-12 (monthly) -- quarterly not yet supported, see note below
+    start::Tuple{Int,Int}                          # (year, subperiod); subperiod is 1-12 for monthly (period=12) or 1-4 for quarterly (period=4)
+    period::Int                                     # 4 (quarterly) or 12 (monthly) -- confirmed directly against the real binary that X-13 supports no other value for seasonal adjustment ("Seasonal period must be 4 or 12"); see validate!'s own new rule
     title::String
     order::NTuple{3,Int}                            # non-seasonal (p,d,q), Python-style default (0,1,1)
     seasonal_order::Union{Nothing,NTuple{4,Int}}     # seasonal (P,D,Q,period), Python-style
@@ -41,7 +42,7 @@ struct X13Spec
 end
 
 """
-    X13Spec(y; start=(1980,1), title=..., order=(0,1,1), seasonal_order=nothing,
+    X13Spec(y; start=(1980,1), period=12, title=..., order=(0,1,1), seasonal_order=nothing,
             arima_model=nothing, transform=nothing, outlier=false, automdl=false,
             maxorder=nothing, maxdiff=nothing, x11_mode=nothing, seats=false,
             save=nothing, trading=false, regression_variables=String[],
@@ -68,11 +69,19 @@ CLAUDE.md's genuine-superset requirement) with R-style raw passthrough
 (`regression_variables`, `arima_model`) -- see handoff/w2-spec.md
 section 2 for the design rationale. Throws `ArgumentError` immediately
 (before any subprocess is ever spawned) if the spec violates one of the
-four rules `validate!` checks, each confirmed directly against the real
+rules `validate!` checks, each confirmed directly against the real
 binary, not hypothetical.
 
-Monthly series only (period 1-12) -- quarterly isn't exercised by any
-verified fixture in this project yet, so it isn't claimed as supported.
+`period=12` (monthly, `start[2]` in `1:12`) or `period=4` (quarterly,
+`start[2]` in `1:4`) -- confirmed directly against the real binary that
+these are the ONLY two values X-13ARIMA-SEATS accepts for seasonal
+adjustment at all (`"ERROR: Seasonal period must be 4 or 12 if a
+seasonal adjustment is done"`, hit directly testing every other
+plausible value: 1, 2, 3, 6, 24, 52). This is a genuine, hard limit of
+the underlying methodology (X-11's filters are specifically designed
+for these two), not a wrapper-imposed restriction -- there is no
+broader "arbitrary frequency" support to add here or anywhere upstream
+of it.
 
 `residuals=true` adds an `estimate { save = (rsd) }` block -- confirmed
 directly against the real binary (`handoff/udg_and_residuals/`) that
@@ -83,6 +92,7 @@ model fit rather than the decomposition step.
 function X13Spec(
     y::AbstractVector{<:Real};
     start::Tuple{Int,Int} = (1980, 1),
+    period::Int = 12,
     title::AbstractString = "SeasonalAdjustment.jl series",
     order::NTuple{3,Int} = (0, 1, 1),
     seasonal_order::Union{Nothing,NTuple{4,Int}} = nothing,
@@ -107,6 +117,7 @@ function X13Spec(
     spec = X13Spec(
         Float64.(collect(y)),
         start,
+        period,
         String(title),
         order,
         seasonal_order,
@@ -144,7 +155,7 @@ end
 """
     validate!(spec::X13Spec) -> X13Spec
 
-Checks four real requirements confirmed directly against the real
+Checks real requirements confirmed directly against the real
 `x13prebuilt` binary during this project's development (see
 handoff/w2-spec.md section 2 and development-sequence.md), throwing
 `ArgumentError` with a message that names the actual binary error it's
@@ -153,10 +164,17 @@ preventing -- fast, native, BEFORE any subprocess round-trip:
 1. An explicit ARIMA model (`arima_model`/`seasonal_order`) and
    `automdl`/`maxorder`/`maxdiff` can't both be given (found while
    implementing W.4's `maxorder`/`maxdiff` passthrough).
-2. Series length >= 36 months (3 complete years).
-3. `regression_user` data must cover the series length plus the
-   RegARIMA forecast horizon (1 year), not just the historical length.
-4. `transform = :log` is required whenever a regression block is
+2. `period` must be 4 (quarterly) or 12 (monthly) -- confirmed directly
+   against the real binary, the ONLY two values it accepts for seasonal
+   adjustment at all.
+3. Series length >= 3 complete years, i.e. `3 * period` observations
+   (36 for monthly, 12 for quarterly -- confirmed directly for both:
+   the real binary's own minimum-length error is identical in wording
+   for either period, just scaled).
+4. `regression_user` data must cover the series length plus the
+   RegARIMA forecast horizon (1 year = `period` observations), not just
+   the historical length.
+5. `transform = :log` is required whenever a regression block is
    combined with `x11_mode` in `(:multiplicative, :logadditive)`.
 """
 function validate!(spec::X13Spec)
@@ -174,22 +192,36 @@ function validate!(spec::X13Spec)
         "same input file.\"",
     ))
 
+    spec.period in (4, 12) || throw(ArgumentError(
+        "period=$(spec.period) isn't valid -- X-13ARIMA-SEATS accepts only 4 (quarterly) " *
+        "or 12 (monthly) for seasonal adjustment, confirmed directly against the real " *
+        "binary's own error: \"Seasonal period must be 4 or 12 if a seasonal adjustment " *
+        "is done.\" (tested directly against periods 1, 2, 3, 6, 24, 52 -- all rejected " *
+        "the same way)",
+    ))
+    spec.start[2] in 1:spec.period || throw(ArgumentError(
+        "start=$(spec.start) has a subperiod (start[2]=$(spec.start[2])) outside the " *
+        "valid range 1:$(spec.period) for period=$(spec.period)",
+    ))
+
     n = length(spec.y)
-    n >= 36 || throw(ArgumentError(
-        "series has $n observations, but x13prebuilt requires at least 36 months " *
-        "(3 complete years) of data -- confirmed directly against the real binary's " *
-        "own error: \"Series to be modelled and/or seasonally adjusted must have at " *
-        "least 3 complete years of data.\"",
+    min_n = 3 * spec.period
+    n >= min_n || throw(ArgumentError(
+        "series has $n observations, but x13prebuilt requires at least $min_n " *
+        "$(spec.period == 12 ? "months" : "quarters") (3 complete years) of data -- " *
+        "confirmed directly against the real binary's own error (identical wording for " *
+        "both period=12 and period=4, just scaled): \"Series to be modelled and/or " *
+        "seasonally adjusted must have at least 3 complete years of data.\"",
     ))
 
     if spec.regression_user !== nothing
-        min_len = n + 12
+        min_len = n + spec.period
         length(spec.regression_user) >= min_len || throw(ArgumentError(
             "regression_user has $(length(spec.regression_user)) data points, but must " *
-            "cover the series length ($n) plus the RegARIMA forecast horizon (12 months) " *
-            "= $min_len -- confirmed directly against the real binary's own error: " *
-            "\"forecasts end date ... must end on or before user-defined regression " *
-            "variables end date\"",
+            "cover the series length ($n) plus the RegARIMA forecast horizon " *
+            "($(spec.period) $(spec.period == 12 ? "months" : "quarters")) = $min_len -- " *
+            "confirmed directly against the real binary's own error: \"forecasts end " *
+            "date ... must end on or before user-defined regression variables end date\"",
         ))
     end
 
@@ -265,6 +297,7 @@ function render(spec::X13Spec)
     println(io, "series {")
     println(io, "  title = \"$(spec.title)\"")
     println(io, "  start = $(spec.start[1]).$(spec.start[2])")
+    println(io, "  period = $(spec.period)")
     print(io, "  data = (")
     _write_wrapped(io, spec.y)
     println(io, ")")

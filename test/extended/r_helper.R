@@ -14,6 +14,9 @@
 #
 # Input JSON fields (all optional except y/start_year/start_period):
 #   y: [numbers], start_year/start_period: integers
+#   period: 12 (monthly, default if omitted) or 4 (quarterly) -- confirmed
+#     directly that R's ts()/seas() genuinely support frequency=4, same
+#     as Julia's own confirmed period=4-or-12-only binary constraint.
 #   transform: "none"|"log"|"auto"|null
 #   arima_model: "(0 1 1)(0 1 1)" string, or null to let automdl search
 #   outlier: true/false
@@ -40,7 +43,8 @@ suppressMessages(library(jsonlite))
 args <- commandArgs(trailingOnly = TRUE)
 input <- fromJSON(args[1])
 
-y <- ts(input$y, start = c(input$start_year, input$start_period), frequency = 12)
+period <- if (is.null(input$period)) 12 else input$period
+y <- ts(input$y, start = c(input$start_year, input$start_period), frequency = period)
 
 # Build seas() arguments to mirror X13Spec/render's own block structure
 # as closely as possible -- see this session's own knob-by-knob

@@ -6,7 +6,7 @@
 # plan this file's tests implement.
 
 """
-    parse_table(path) -> Vector{Tuple{Date,Float64}}
+    parse_table(path; period=12) -> Vector{Tuple{Date,Float64}}
 
 Parses one `x13ashtml` output table -- a `.d10`/`.d11`/`.d12`/`.d13`
 (X-11) or `.s10`/`.s11`/`.s12`/`.s13` (SEATS) file. Both share the exact
@@ -16,12 +16,21 @@ header (`date\\t<name>` then a `------\\t---...` separator), then
 tab-separated `<YYYYMM>\\t<value>` rows -- one parser handles both,
 dispatching on nothing but the file's own content.
 
-Only the monthly `YYYYMM` date format is supported (every fixture in
-this project is monthly) -- a differently-shaped date string throws a
-clear error rather than being silently misparsed as some other
-frequency that hasn't actually been verified.
+`period` selects how the trailing 2 digits of the 6-char date string are
+interpreted: `12` (the default) for monthly `YYYYMM` (01-12); `4` for
+quarterly `YYYYQQ` -- confirmed directly against a real quarterly fixture
+that the binary reuses the exact same 6-char width for quarterly output,
+just with the trailing digits meaning quarter-number (01-04) rather than
+month-number. A quarter is mapped to the `Date` of its first month
+(Q1->month 1, Q2->month 4, Q3->month 7, Q4->month 10). Any other `period`
+value, or a trailing-digit value out of range for the given `period`,
+throws a clear error rather than silently misparsing.
 """
-function parse_table(path::AbstractString)
+function parse_table(path::AbstractString; period::Int=12)
+    period in (4, 12) || error(
+        "parse_table: period=$period isn't supported -- only 4 (quarterly) or 12 " *
+        "(monthly) match x13ashtml's own output, confirmed directly against the real binary",
+    )
     lines = readlines(path)
     length(lines) >= 2 || error("$path: expected at least a 2-line header, got $(length(lines)) line(s)")
     out = Tuple{Date,Float64}[]
@@ -31,21 +40,30 @@ function parse_table(path::AbstractString)
         length(parts) >= 2 || error("$path: malformed data line (expected 2 tab-separated fields): $(repr(line))")
         datestr = parts[1]
         length(datestr) == 6 || error(
-            "$path: unsupported date format $(repr(datestr)) -- only monthly YYYYMM is " *
-            "supported (every fixture verified in this project is monthly); a different " *
-            "length suggests a different frequency (e.g. quarterly) that hasn't been " *
-            "confirmed against a real fixture yet",
+            "$path: unsupported date format $(repr(datestr)) -- only the 6-char " *
+            "YYYYMM/YYYYQQ format is supported; a different length suggests a frequency " *
+            "that hasn't been confirmed against a real fixture yet",
         )
         year = parse(Int, datestr[1:4])
-        month = parse(Int, datestr[5:6])
+        sub = parse(Int, datestr[5:6])
         value = parse(Float64, parts[2])
-        push!(out, (Date(year, month), value))
+        if period == 12
+            sub in 1:12 || error(
+                "$path: date $(repr(datestr)) has month=$sub outside 1:12 for period=12",
+            )
+            push!(out, (Date(year, sub), value))
+        else # period == 4
+            sub in 1:4 || error(
+                "$path: date $(repr(datestr)) has quarter=$sub outside 1:4 for period=4",
+            )
+            push!(out, (Date(year, (sub - 1) * 3 + 1), value))
+        end
     end
     return out
 end
 
 """
-    parse_output(result::X13RunResult, tables) -> Dict{Symbol,Vector{Tuple{Date,Float64}}}
+    parse_output(result::X13RunResult, tables; period=12) -> Dict{Symbol,Vector{Tuple{Date,Float64}}}
 
 Convenience wrapper around [`parse_table`](@ref) for several tables at
 once, resolving each symbol in `tables` (e.g. `:d10`, `:s11`) against
@@ -55,8 +73,12 @@ first sketched in handoff/w3-run-parse.md) -- `run_x13` runs in a fresh
 scratch directory per call, not the caller's current working directory,
 so resolving output paths needs `result.dir` too; taking the result
 directly avoids the caller having to track and re-pass it by hand.
+
+`period` (`12` monthly / `4` quarterly) is threaded straight through to
+[`parse_table`](@ref) for every requested table -- callers must pass the
+same `period` the underlying spec was run with.
 """
-function parse_output(result::X13RunResult, tables::AbstractVector{Symbol})
+function parse_output(result::X13RunResult, tables::AbstractVector{Symbol}; period::Int=12)
     out = Dict{Symbol,Vector{Tuple{Date,Float64}}}()
     for t in tables
         path = joinpath(result.dir, "$(result.basename).$(t)")
@@ -64,7 +86,7 @@ function parse_output(result::X13RunResult, tables::AbstractVector{Symbol})
             "expected output table $path (requested :$t) does not exist -- was it " *
             "included in the spec's x11{save=(...)}/seats{save=(...)} list?",
         )
-        out[t] = parse_table(path)
+        out[t] = parse_table(path; period=period)
     end
     return out
 end

@@ -290,22 +290,52 @@ function _monthly_periods(from::Date, to::Date)
     return periods
 end
 
+# Quarterly tiling, added alongside `_monthly_periods` to support
+# `freq=:quarter` below -- 3-month blocks anchored at the calendar
+# quarter (Jan/Apr/Jul/Oct) containing `from`/`to`, mirroring
+# `_monthly_periods`'s own "always tile whole periods, even if `from`/
+# `to` land mid-period" behavior.
+function _quarterly_periods(from::Date, to::Date)
+    periods = Tuple{Date,Date}[]
+    fm = Dates.firstdayofmonth(from)
+    d = Date(year(fm), ((month(fm) - 1) ÷ 3) * 3 + 1, 1)
+    tm = Dates.firstdayofmonth(to)
+    stop = Date(year(tm), ((month(tm) - 1) ÷ 3) * 3 + 1, 1)
+    while d <= stop
+        push!(periods, (d, Dates.lastdayofmonth(d + Dates.Month(2))))
+        d += Dates.Month(3)
+    end
+    return periods
+end
+
+_periods_for(freq::Symbol, from::Date, to::Date) =
+    freq === :month ? _monthly_periods(from, to) :
+    freq === :quarter ? _quarterly_periods(from, to) :
+    throw(ArgumentError(
+        "freq=$freq isn't supported -- only :month or :quarter, matching X-13's own " *
+        "period=12/period=4 -- see X13Spec's `period` field",
+    ))
+
 """
     trading_day_regressors(from, to, cal; freq=:month) -> Matrix{Float64}
 
-For each period between `from` and `to` (currently only `freq=:month`
-is supported), count actual business days (per `cal`) on each weekday,
-returned as a `(nperiods, 6)` matrix using X-13's own `usertype=td`
-contrast convention: column `j` (Monday=1..Saturday=6) is `(# business
-days on weekday j in that period) - (# business days on Sunday in that
-period)`.
+For each period between `from` and `to` (`freq=:month` or `freq=:quarter`,
+matching X-13's own period=12/period=4), count actual business days (per
+`cal`) on each weekday, returned as a `(nperiods, 6)` matrix using X-13's
+own `usertype=td` contrast convention: column `j` (Monday=1..Saturday=6)
+is `(# business days on weekday j in that period) - (# business days on
+Sunday in that period)`.
+
+**Known gap, `freq=:quarter`**: confirmed directly against the real
+binary that quarterly's own `.rmx` export for `td` has a 7th column
+("Leap Year") that monthly's does not -- this function always returns 6
+columns for either `freq`, so it does not reproduce that extra column.
+Fine for feeding a *user*-defined regressor (X-13 doesn't require the
+extra column there), not a byte-for-byte replica of X-13's own internal
+quarterly `td` regressor.
 """
 function trading_day_regressors(from::Date, to::Date, cal::Calendar; freq::Symbol = :month)
-    freq === :month || throw(ArgumentError(
-        "trading_day_regressors: freq=$freq isn't supported yet (only :month) -- " *
-        "extend _monthly_periods-style tiling before using another frequency",
-    ))
-    periods = _monthly_periods(from, to)
+    periods = _periods_for(freq, from, to)
     out = Matrix{Float64}(undef, length(periods), 6)
     for (i, (p_from, p_to)) in enumerate(periods)
         counts = zeros(Int, 7)  # index 1=Monday .. 7=Sunday, matching Dates.dayofweek
@@ -321,19 +351,21 @@ function trading_day_regressors(from::Date, to::Date, cal::Calendar; freq::Symbo
 end
 
 """
-    easter_regressor(from, to; window=0) -> Vector{Float64}
+    easter_regressor(from, to; window=0, freq=:month) -> Vector{Float64}
 
-The standard Census/X-13 Easter regressor: for each monthly period
-between `from` and `to`, the fraction of the `window`-day window
-immediately before Easter Sunday (of whichever year that period falls
-in) that overlaps the period. `window=0` (the default) produces an
-all-zero vector -- X-13 itself has no universal default `w`, the user
-always specifies it explicitly in the `.spc` file, so no particular
-value is assumed here either; pass an explicit `window` (commonly 1, 8,
-or 15 in practice).
+The standard Census/X-13 Easter regressor: for each period (`freq=:month`
+or `freq=:quarter`) between `from` and `to`, the fraction of the
+`window`-day window immediately before Easter Sunday (of whichever year
+that period falls in) that overlaps the period. `window=0` (the default)
+produces an all-zero vector -- X-13 itself has no universal default `w`,
+the user always specifies it explicitly in the `.spc` file, so no
+particular value is assumed here either; pass an explicit `window`
+(commonly 1, 8, or 15 in practice). `freq=:quarter` confirmed directly
+against the real binary to work the same way as monthly (Easter always
+falls within Q1 or Q2, so at most one quarter per year is affected).
 """
-function easter_regressor(from::Date, to::Date; window::Integer = 0)
-    periods = _monthly_periods(from, to)
+function easter_regressor(from::Date, to::Date; window::Integer = 0, freq::Symbol = :month)
+    periods = _periods_for(freq, from, to)
     out = Vector{Float64}(undef, length(periods))
     for (i, (p_from, p_to)) in enumerate(periods)
         if window <= 0
@@ -352,10 +384,10 @@ function easter_regressor(from::Date, to::Date; window::Integer = 0)
 end
 
 """
-    custom_holiday_regressor(from, to, cal, holiday_years_present) -> Vector{Float64}
+    custom_holiday_regressor(from, to, cal, holiday_years_present; freq=:month) -> Vector{Float64}
 
-For each monthly period between `from` and `to`, `1.0` if
-`holiday_years_present(year)` (a function `year::Int ->
+For each period (`freq=:month` or `freq=:quarter`) between `from` and
+`to`, `1.0` if `holiday_years_present(year)` (a function `year::Int ->
 Union{Date,Nothing}`) returns a date that both falls in that period AND
 is not already a weekend under `cal` (a holiday that lands on a weekend
 has no incremental trading-day effect to explain -- matches the "no
@@ -373,8 +405,8 @@ This is the exact mechanism verified end-to-end against the real
 function produces the `data` vector that block needs; W.2 is
 responsible for writing the block itself.
 """
-function custom_holiday_regressor(from::Date, to::Date, cal::Calendar, holiday_years_present::Function)
-    periods = _monthly_periods(from, to)
+function custom_holiday_regressor(from::Date, to::Date, cal::Calendar, holiday_years_present::Function; freq::Symbol = :month)
+    periods = _periods_for(freq, from, to)
     out = Vector{Float64}(undef, length(periods))
     for (i, (p_from, p_to)) in enumerate(periods)
         hit = 0.0

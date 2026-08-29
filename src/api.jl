@@ -67,6 +67,12 @@ nor an explicit `start=(year, period)` is given; falls back to
 `X13Spec`'s own `(1980, 1)` default otherwise (only `result.dates`'
 labeling is affected either way, not the computed values).
 
+`period` (`12` monthly / `4` quarterly, matching [`X13Spec`](@ref)'s own
+default and validation -- see [`validate!`](@ref)) controls both how
+`start` is inferred from `index` (a quarter number 1-4, derived from the
+inferred date's month, when `period=4`) and how output tables/residuals
+are parsed back (`YYYYQQ` vs `YYYYMM`, see [`parse_table`](@ref)).
+
 Throws `ArgumentError` immediately if the spec is invalid (see
 [`validate!`](@ref)) -- before any subprocess is spawned -- and throws
 an `ErrorException` carrying the binary's own error text if the run
@@ -83,6 +89,7 @@ function x13(
     y;
     index = tsindex(y),
     start::Union{Nothing,Tuple{Int,Int}} = nothing,
+    period::Int = 12,
     maxorder::Union{Nothing,Tuple{Int,Int}} = nothing,
     maxdiff::Union{Nothing,Tuple{Int,Int}} = nothing,
     outlier::Bool = false,
@@ -106,14 +113,15 @@ function x13(
     resolved_start = if start !== nothing
         start
     elseif index !== nothing
-        (Dates.year(index[1]), Dates.month(index[1]))
+        period == 12 ? (Dates.year(index[1]), Dates.month(index[1])) :
+            (Dates.year(index[1]), (Dates.month(index[1]) - 1) ÷ 3 + 1)
     else
         nothing
     end
 
     spec = resolved_start === nothing ?
-        X13Spec(yv; maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, kwargs...) :
-        X13Spec(yv; start = resolved_start, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, kwargs...)
+        X13Spec(yv; period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, kwargs...) :
+        X13Spec(yv; start = resolved_start, period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, kwargs...)
 
     spec_path = write_spec(spec, joinpath(mktempdir(), "series.spc"))
     run_result = run_x13(spec_path; udg = true)
@@ -122,13 +130,13 @@ function x13(
     ))
 
     tables = spec.seats ? (:s10, :s11, :s12, :s13) : (:d10, :d11, :d12, :d13)
-    parsed = parse_output(run_result, collect(tables))
+    parsed = parse_output(run_result, collect(tables); period = spec.period)
     seasonal_factors = last.(parsed[tables[1]])
     seasonally_adjusted = last.(parsed[tables[2]])
     trend = last.(parsed[tables[3]])
     irregular = last.(parsed[tables[4]])
     dates = first.(parsed[tables[1]])
-    residuals_vec = last.(parse_table(joinpath(run_result.dir, "$(run_result.basename).rsd")))
+    residuals_vec = last.(parse_table(joinpath(run_result.dir, "$(run_result.basename).rsd"); period = spec.period))
     udg = parse_udg(joinpath(run_result.dir, "$(run_result.basename).udg"))
 
     return X13Result(

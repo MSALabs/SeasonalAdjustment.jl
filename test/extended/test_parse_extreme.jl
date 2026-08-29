@@ -60,7 +60,7 @@ end
         err5 = e
     end
     @test err5 isa ErrorException
-    @test occursin("only monthly YYYYMM is supported", err5.msg)
+    @test occursin("only the 6-char YYYYMM/YYYYQQ format is supported", err5.msg)
 
     # a same-length (6-char) but non-numeric date string -- confirmed
     # directly this is NOT caught by the length check (both are 6

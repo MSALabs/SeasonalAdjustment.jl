@@ -81,8 +81,16 @@ def main():
         inp = json.load(f)
 
     y = np.array(inp["y"], dtype=float)
+    # period=4 (quarterly) confirmed directly to work through pandas'
+    # own "QS" (quarter-start) freq, generating period=4 in the spec
+    # statsmodels builds internally -- same as period=12/"MS" (month-
+    # start) for the existing monthly path. `start_period` is a quarter
+    # number (1-4) when period=4, matching X13Spec's own `start` field.
+    period = inp.get("period", 12)
+    freq = "QS" if period == 4 else "MS"
+    start_month = 1 + 3 * (inp["start_period"] - 1) if period == 4 else inp["start_period"]
     idx = pd.date_range(
-        f"{inp['start_year']}-{inp['start_period']:02d}-01", periods=len(y), freq="MS"
+        f"{inp['start_year']}-{start_month:02d}-01", periods=len(y), freq=freq
     )
     ts = pd.Series(y, index=idx)
 

@@ -83,7 +83,14 @@ struct CrossvalCase
     seats::Bool
     trading::Bool
     aictest::Vector{Symbol}      # only :td/:easter meaningfully cross-checked (see r_helper.R)
+    period::Int                  # 12 (monthly) or 4 (quarterly) -- see quarterly interval support
 end
+
+# 8-arg convenience constructor, defaulting period=12 -- keeps every
+# existing monthly call site (the whole Stage-1 grid) unchanged; only
+# quarterly-specific cases need to pass period explicitly.
+CrossvalCase(y, start, transform, arima_model, outlier, seats, trading, aictest) =
+    CrossvalCase(y, start, transform, arima_model, outlier, seats, trading, aictest, 12)
 
 function _case_to_json_dict(c::CrossvalCase; x13_path::AbstractString = _X13_BIN_DIR)
     Dict(
@@ -95,6 +102,7 @@ function _case_to_json_dict(c::CrossvalCase; x13_path::AbstractString = _X13_BIN
         "outlier" => c.outlier,
         "seats" => c.seats,
         "trading" => c.trading,
+        "period" => c.period,
         "regression_variables" => String[],
         "aictest" => string.(c.aictest),
         "x13_path" => x13_path,
