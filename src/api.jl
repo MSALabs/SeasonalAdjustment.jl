@@ -401,7 +401,7 @@ StatsAPI.dof(r::X13Result) = something(_udg_int(r.udg, "nreg"), 0) + something(_
     StatsAPI.vcov(r::X13Result)
 
 Always throws. `.udg` carries each coefficient's own standard error
-(see [`StatsAPI.stderror`](@ref)) but no covariance matrix between
+(see `StatsAPI.stderror`) but no covariance matrix between
 coefficients -- there is nothing to return, so this names that plainly
 rather than returning a wrong or fabricated answer, the same style
 `durbin_watson_test(method=:exact)`/`fit_garch(dist=:t)`-style "not
@@ -446,36 +446,8 @@ function Base.show(io::IO, ::MIME"text/plain", r::X13Result)
     end
 end
 
-"""
-    series(r::X13Result, table::Symbol; reeval=true) -> Vector{Float64}
-    series(r::X13Result, tables::AbstractVector{Symbol}; reeval=true) -> Dict{Symbol,Vector{Float64}}
-
-Mirrors R's `seasonal::series(x, "d8")`: if `table` wasn't included in
-the original run's `spec.save`, re-runs with it added and returns the
-freshly-parsed values, rather than forcing the caller down to
-`X13Spec`/`run_x13`/`parse_output` and rebuilding the spec by hand. The
-vector form re-runs ONCE for the union of every missing table requested,
-not once per table.
-
-| `reeval` | Behaviour |
-|---|---|
-| `true` (default) | Missing table(s) trigger one automatic re-run with `save` extended to include them (matches R's own default). An `@info` note is logged when this happens (the Julia idiom for R's `verbose=TRUE`, suppressible through the logging system). |
-| `false` | A missing table throws `ArgumentError` naming it, instead of re-running (matches R's `reeval=FALSE`). |
-
-**Not cached**: every call that needs a re-run performs a fresh
-subprocess invocation, even if an identical `series()` call was already
-made -- `X13Result` is an immutable `struct` (deliberately, see its own
-docstring), so caching the re-run's result on it isn't possible without
-either a mutable scratch field or a wrapper type, neither of which this
-first pass adds. A caller looping over several tables should use the
-vector form (one re-run for all of them) rather than calling the scalar
-form repeatedly.
-
-Table symbols are validated against the union of known X-11/SEATS/
-regARIMA table codes before any subprocess is spawned -- an unrecognized
-symbol throws `ArgumentError` immediately rather than being passed to
-the binary to fail on.
-"""
+# Known X-11/SEATS/regARIMA table codes -- series() validates a
+# requested table symbol against this BEFORE spawning any subprocess.
 const _KNOWN_TABLES = Set([
     :b1, :c17, :d8, :d9, :d10, :d11, :d12, :d13,
     :s10, :s11, :s12, :s13, :s14, :s15, :s16, :s17, :s18,
@@ -519,6 +491,51 @@ function series(r::X13Result, tables::AbstractVector{Symbol}; reeval::Bool = tru
 end
 
 series(r::X13Result, table::Symbol; reeval::Bool = true) = series(r, [table]; reeval = reeval)[table]
+
+# Attached via explicit post-definition `@doc str name` rather than the
+# usual pre-definition `"""..."""` convention -- a real, unresolved
+# oddity found while verifying W.6's own doc changes with a full
+# Documenter build (not just the doctest-only check W.5 was verified
+# with): a pre-definition docstring for `series` specifically (moved to
+# immediately precede `function series(...)` after finding and fixing
+# the original bug of it being attached to `_KNOWN_TABLES` instead --
+# see git history) still would not attach -- confirmed directly,
+# repeatedly, that `Base.Docs.meta(SeasonalAdjustment)` had no entry for
+# the `series` binding at all, even after a from-scratch recompile, with
+# `plots.jl` disabled, and with the second method definition removed,
+# ruling out cache staleness, RecipesBase/@recipe interference, and
+# multi-method interaction as the cause. This explicit form is standard,
+# always-reliable Julia syntax and sidesteps whatever the real cause is.
+@doc """
+    series(r::X13Result, table::Symbol; reeval=true) -> Vector{Float64}
+    series(r::X13Result, tables::AbstractVector{Symbol}; reeval=true) -> Dict{Symbol,Vector{Float64}}
+
+Mirrors R's `seasonal::series(x, "d8")`: if `table` wasn't included in
+the original run's `spec.save`, re-runs with it added and returns the
+freshly-parsed values, rather than forcing the caller down to
+`X13Spec`/`run_x13`/`parse_output` and rebuilding the spec by hand. The
+vector form re-runs ONCE for the union of every missing table requested,
+not once per table.
+
+| `reeval` | Behaviour |
+|---|---|
+| `true` (default) | Missing table(s) trigger one automatic re-run with `save` extended to include them (matches R's own default). An `@info` note is logged when this happens (the Julia idiom for R's `verbose=TRUE`, suppressible through the logging system). |
+| `false` | A missing table throws `ArgumentError` naming it, instead of re-running (matches R's `reeval=FALSE`). |
+
+**Not cached**: every call that needs a re-run performs a fresh
+subprocess invocation, even if an identical `series()` call was already
+made -- `X13Result` is an immutable `struct` (deliberately, see its own
+docstring), so caching the re-run's result on it isn't possible without
+either a mutable scratch field or a wrapper type, neither of which this
+first pass adds. A caller looping over several tables should use the
+vector form (one re-run for all of them) rather than calling the scalar
+form repeatedly.
+
+Table symbols are validated against the union of known X-11/SEATS/
+regARIMA table codes before any subprocess is spawned -- an unrecognized
+symbol throws `ArgumentError` immediately rather than being passed to
+the binary to fail on.
+""" series
 
 # ---------------------------------------------------------------------
 # W.6 -- spectrum-curve fetching for spectrumplot. Deliberately NOT

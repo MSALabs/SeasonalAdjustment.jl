@@ -331,6 +331,26 @@ Implementing `residplot`/`monthplot`/`spectrumplot` exactly as the handoff speci
 
 ---
 
+## Documentation pass: API reference completeness + real plot images in Getting Started (2026-08-30)
+
+Prompted directly by a user check ("is there an example of plots in the docs, and is the doc updated") -- checked rather than assumed, and the honest answer was "partially": `development-sequence.md`/`README.md`/`api.md` were genuinely current for W.5/W.6, but `docs/src/getting_started.md` -- the one page meant to carry worked examples -- had zero mentions of either. Fixed properly, not just noted.
+
+**`docs/src/api.md`**: added the two exported W.6 accessors that were missing from the Diagnostics `@docs` block (`nobs_effective`, `spectrum_peaks` -- a real gap, not caught by the earlier W.6 pass) and `StatsAPI.dof`/`StatsAPI.vcov` (the two `StatsAPI` extensions that actually carry their own docstrings; the other eight are documented collectively in prose only, by design).
+
+**`docs/src/getting_started.md`**: new "Diagnostics" section (real, confirmed values from the `auto_test.udg` fixture -- `StatsAPI.aic`, `qs(result).sa`, `outliers(result; full=true)`, `series(result, :d8)`) and a new "Plotting" section with **two real, embedded PNG images** (`docs/src/assets/plot_overlay.png`, `docs/src/assets/monthplot.png`), generated the same way the W.6 real-backend verification was done -- a separate scratch Julia environment dev-depending on this package plus a from-scratch `Plots.jl`+GR install, rendering the actual airline-passengers example this page already uses. One real, worthwhile recipe improvement made while producing these: `monthplot`'s raw cycle-subseries lines were auto-cycling through Plots' default color palette (a rainbow, one color per calendar month) -- changed to a single consistent gray (matching R's own `monthplot.seas` convention: thick red mean bar, everything else one neutral color), confirmed by regenerating the image and comparing before/after.
+
+**A full Documenter build was actually run this time** (not just the `doctest`-only check the W.5 doc pass used) -- `makedocs(...; checkdocs=:exports, remotes=nothing)`, the `remotes=nothing` needed only because this WSL checkout has no git remote configured, not something the real CI build needs. This caught four real, genuine documentation bugs the doctest-only check has no mechanism to catch at all:
+
+1. Three broken `[`...`](@ref)` cross-references to symbols that don't have their own standalone docstring in the built manual (`StatsAPI.stderror`, the bare module name `SeasonalAdjustment`, and the private `_spectrum_series`) -- fixed by downgrading each to plain code-formatted text, not a link.
+2. **`series`'s own docstring was attached to the wrong binding** (`_KNOWN_TABLES`, a private constant, because that constant's declaration sat between the docstring and the actual `function series(...)` it was meant to document) -- a real, pre-existing bug dating back to when `series` was first written for W.5, never caught because `doctest`-only checking doesn't verify docstring-to-binding attachment at all, only `jldoctest` block *output*. Moving the docstring to immediately precede `function series(...)` should have fixed it (confirmed structurally correct, confirmed via `grep`-counted triple-quote pairing, confirmed via an isolated reproduction of the same const-then-docstring-then-function pattern working fine in a standalone test module) -- **but it still didn't attach**, confirmed directly and repeatedly via `Base.Docs.meta(SeasonalAdjustment)` showing no entry for the `series` binding at all, even after: a from-scratch recompile (ruling out stale cache), with `plots.jl` disabled entirely (ruling out `RecipesBase`/`@recipe` macro interference), and with the second (one-liner) `series` method removed (ruling out multi-method interaction). Root cause was not found despite this. Worked around with the standard, always-reliable Julia mechanism instead -- an explicit post-definition `@doc """...""" series` assignment -- confirmed directly this resolves it (`Base.Docs.meta` now has the entry, Documenter builds cleanly). Left as a genuinely unresolved oddity, documented plainly in the code rather than papered over with a false explanation.
+3. `residplot!`/`monthplot!`/`spectrumplot!` (the `@userplot`-generated mutating "add to existing plot" forms) are real, exported, documented bindings that weren't referenced in any `@docs` block -- `checkdocs=:exports` requires every exported name to be surfaced in the manual somewhere; added their own `@docs` block to `api.md`.
+
+Confirmed the built HTML actually contains and correctly references both new images (`docs/build/assets/*.png` present, `getting_started/index.html` links to both by the expected relative path) before considering this done, not just "the build didn't error."
+
+**Result**: default suite reconfirmed **1040 passed, 0 failed, 0 errored** after the `api.jl` docstring-location changes (doc-only in intent, but real code was touched, so re-verified for real rather than assumed harmless).
+
+---
+
 ## Part 2 — native Julia engine (deferred, not abandoned)
 
 | # | Status | What | Needs | Reference points |

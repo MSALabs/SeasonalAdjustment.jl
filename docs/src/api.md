@@ -57,6 +57,8 @@ seasonality_tests
 residual_diagnostics
 spectral_peaks
 filters
+nobs_effective
+spectrum_peaks
 ```
 
 ## StatsAPI contract
@@ -65,6 +67,11 @@ filters
 `nobs`/`residuals`/`coef`/`coefnames`/`stderror`/`dof` -- use these
 fully-qualified (`StatsAPI.aic(r)`), not re-exported under their bare
 names. `StatsAPI.vcov` always throws (`.udg` has no covariance matrix).
+
+```@docs
+StatsAPI.dof
+StatsAPI.vcov
+```
 
 ## Seasonal-parity functions
 
@@ -91,6 +98,17 @@ confirmed story).
 residplot
 monthplot
 spectrumplot
+```
+
+`@userplot`'s own macro expansion also generates `residplot!`/
+`monthplot!`/`spectrumplot!` (the "add to an existing plot" mutating
+forms, matching `plot!`) -- each carries the same docstring as its
+non-`!` counterpart above, not a separate one:
+
+```@docs
+residplot!
+monthplot!
+spectrumplot!
 ```
 
 ## Binary artifact management

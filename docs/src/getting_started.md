@@ -152,6 +152,71 @@ for the documented value this exact mechanism reproduces against the
 real binary (October 1949's seasonal factor shifting from
 `0.898593816033472` to `0.753973303751993`).
 
+## Diagnostics: everything R's `seasonal` package exposes
+
+`x13()` always requests the `.udg` diagnostics dump (`-S`), so every
+value below is already sitting on `result` with no extra call needed —
+a typed accessor layer over it (`StatsAPI` for the model-fit statistics,
+plain functions for everything else) reads it back out:
+
+```julia
+result = x13(airline_passengers; start=(1949, 1), automdl=true, outlier=true,
+             transform=:auto, aictest=[:td, :easter])
+
+using StatsAPI
+StatsAPI.aic(result)          # 946.662093458382
+StatsAPI.bic(result)          # 963.913277397589
+arima_model(result)           # "(0 1 1)(0 1 1)"
+transformfunction(result)     # :log
+
+qs(result).sa                 # (statistic = 0.0, pvalue = 1.0) -- no residual seasonality left
+outliers(result; full=true)   # [(label="AO1951.May", type=:ao, year=1951, period=5,
+                               #   estimate=0.100155824411322, stderror=0.0204386646810968, tstat=4.9003...)]
+
+series(result, :d8)           # re-runs automatically if :d8 wasn't already saved
+```
+
+Any spec block without a dedicated keyword (`forecast`, `slidingspans`,
+`history`, ...) is reachable via `X13Spec`'s own `spec_args`:
+
+```julia
+result = x13(airline_passengers; start=(1949, 1),
+             spec_args = Dict("forecast.maxlead" => "0"))
+```
+
+## Plotting
+
+Load a plotting backend (`Plots.jl` below; a Makie backend works too —
+[`RecipesBase.jl`](https://github.com/JuliaPlots/RecipesBase.jl) itself
+adds zero dependencies of its own) and [`x13`](@ref)'s own result plots
+directly:
+
+```julia
+using SeasonalAdjustment, Plots
+
+result = x13(airline_passengers; start=(1949, 1))
+plot(result; title="Airline Passengers: Original vs Seasonally Adjusted")
+```
+
+![Original vs seasonally adjusted airline passengers](assets/plot_overlay.png)
+
+[`monthplot`](@ref) is the one with the real diagnostic content — the
+seasonal factor for each calendar month (thick gray line + red mean
+bar) with the underlying SI ratios overlaid as blue stems, so you can
+see the scatter the mean bar is actually smoothing through, not just
+its final value:
+
+```julia
+monthplot(result; title="Airline Passengers: Seasonal Factors by Month (SI ratios in blue)")
+```
+
+![Airline passengers seasonal factors by calendar month, with SI-ratio stems](assets/monthplot.png)
+
+[`residplot`](@ref) (regARIMA residuals) and [`spectrumplot`](@ref)
+(spectral peaks — a chart neither R's `seasonal` nor Python's
+`statsmodels` ships at all) round out the set; see the
+[API reference](api.md) for their full keyword options.
+
 ## Design notes worth knowing before you dig further
 
 - **The one deliberate exception in the TSAnalytics.jl family.** This

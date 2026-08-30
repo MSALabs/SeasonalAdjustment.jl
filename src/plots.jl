@@ -244,8 +244,8 @@ type that already has its own generic recipe" situation) is
 `RecipesBase.@userplot`: a small wrapper struct is the recipe's real
 dispatch target instead of `X13Result` directly, sidestepping the
 conflict by construction. `RecipesBase.@userplot ResidPlot` also
-auto-exports `residplot`/`residplot!` -- see [`SeasonalAdjustment`](@ref)'s
-own module file, which does NOT separately export these names itself.
+auto-exports `residplot`/`residplot!` -- see `src/SeasonalAdjustment.jl`,
+which does NOT separately export these names itself.
 """
 RecipesBase.@userplot ResidPlot
 @recipe function f(rp::ResidPlot; outliers = true)
@@ -321,6 +321,7 @@ RecipesBase.@userplot MonthPlot
         xs = _band_positions(k, length(idxs))
         @series begin
             seriestype := :path
+            color --> :gray
             label --> ""
             xs, values[idxs]
         end
@@ -364,7 +365,7 @@ Not in either reference pipeline -- [`spectrum_peaks`](@ref) (W.6) makes
 it nearly free, and spectral peaks are how residual seasonality and
 trading-day effects are actually judged in official statistics. Plots
 the confirmed real spectrum curve (`.sp0`/`.sp1`/`.sp2`/`.spr`, fetched
-via [`_spectrum_series`](@ref), re-running once if not already saved)
+via `_spectrum_series`, re-running once if not already saved)
 with vertical markers at every seasonal/trading-day frequency `.udg`
 itself reports as a visually significant peak (see [`spectrum_peaks`](@ref)).
 
