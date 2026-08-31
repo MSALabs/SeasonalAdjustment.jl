@@ -195,3 +195,26 @@ trading_day_regressors
 easter_regressor
 custom_holiday_regressor
 ```
+
+## Bundled datasets (W.9)
+
+Four real example datasets ship with the package (`data/*.csv`, ~30 KB
+total, plain committed CSV rather than Artifacts.toml -- see
+`data/DATASETS.md` for full provenance): `airline` (Box & Jenkins'
+Series G, this package's own verification baseline), `appliance` (the
+X-13 Reference Manual's own worked example, a genuinely different
+seasonal shape from `airline`), `appliance_q` (`appliance` aggregated to
+quarters -- `:derived`, not independently published), and `iip_india`
+(India's Index of Industrial Production, MOSPI -- a real COVID level
+shift, licensing terms not independently re-verified this session, see
+`dataset_info("iip_india")`). `dataset(name)` returns a plain
+`(date=, value=)` `NamedTuple` -- already a Tables.jl column table with
+no `Tables.jl` dependency of its own -- that [`x13`](@ref) accepts
+directly (`x13(dataset("airline"))`, `start` inferred automatically).
+
+```@docs
+dataset
+datasets
+dataset_info
+DatasetInfo
+```

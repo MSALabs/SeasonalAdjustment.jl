@@ -27,20 +27,48 @@ by hand.
     actual `x13prebuilt` binary isn't something every environment that
     might build these docs can do.
 
+## Bundled datasets
+
+Four real example datasets ship with the package (`data/*.csv`, plain
+committed CSV, ~30 KB total — no download, no `Artifacts.toml` entry;
+see `data/DATASETS.md` for full provenance). [`dataset`](@ref) returns a
+plain `(date=, value=)` NamedTuple [`x13`](@ref) accepts directly,
+inferring `start` from the dates automatically:
+
+```jldoctest
+julia> using SeasonalAdjustment
+
+julia> datasets()
+4-element Vector{String}:
+ "airline"
+ "appliance"
+ "appliance_q"
+ "iip_india"
+
+julia> d = dataset("airline");
+
+julia> length(d.value)
+144
+```
+
+`airline` is Box & Jenkins' Series G, the standard benchmark in this
+entire field — this package's own verification baseline, so it's used
+throughout the rest of this page.
+
 ## A first seasonal adjustment
 
 [`x13`](@ref) accepts anything `tsvalues` does — a plain
-`Vector`, or any other container from the wider TSAnalytics.jl-style
-ecosystem.
+`Vector`, [`dataset`](@ref)'s own `NamedTuple`, or any other container
+from the wider TSAnalytics.jl-style ecosystem.
 
 ```julia
 using SeasonalAdjustment
 
-# The Box-Jenkins airline passengers series (1949-1960), the standard
-# benchmark in this entire field -- this exact call reproduces the
-# real x13prebuilt binary's own D10/D11/D12/D13 output exactly,
-# confirmed directly during this project's development.
-result = x13(airline_passengers; start=(1949, 1))
+# This exact call reproduces the real x13prebuilt binary's own
+# D10/D11/D12/D13 output exactly, confirmed directly during this
+# project's development -- start is inferred from dataset("airline")'s
+# own dates, no need to pass it explicitly.
+result = x13(dataset("airline"))
 
 result.seasonally_adjusted   # the D11 table
 result.trend                 # D12
@@ -55,7 +83,7 @@ call, and the shape of the returned [`X13Result`](@ref), stays the
 same:
 
 ```julia
-result = x13(airline_passengers; start=(1949, 1), seats=true, transform=:auto,
+result = x13(dataset("airline"); seats=true, transform=:auto,
              aictest=[:td, :easter], automdl=true)
 ```
 
@@ -68,12 +96,15 @@ discoverability, R-style raw passthrough for anything they don't cover:
 
 ```julia
 result = x13(
-    airline_passengers;
-    start = (1949, 1),
-    seasonal_order = (0, 1, 1, 12),        # Python-style curated ergonomics
-    maxorder = (2, 1), maxdiff = (2, 1),   # matches statsmodels' own parameter names directly
+    dataset("airline");
+    maxorder = (2, 1), maxdiff = (2, 1),   # Python-style curated ergonomics, matches
+                                             # statsmodels' own parameter names directly
     trading = true,                         # shorthand for a trading-day regressor
     regression_variables = ["easter[1]"],  # R-style raw passthrough, for anything not curated
+    transform = :log,                       # required whenever a regression block is present
+                                             # (X-13's own implicit default x11 mode is
+                                             # multiplicative -- confirmed directly, see
+                                             # validate!'s own docstring)
 )
 ```
 
@@ -152,6 +183,15 @@ for the documented value this exact mechanism reproduces against the
 real binary (October 1949's seasonal factor shifting from
 `0.898593816033472` to `0.753973303751993`).
 
+A real Indian series to try this against ships with the package —
+`dataset("iip_india")` (India's monthly Index of Industrial Production,
+2011-04 onward, MOSPI). It also carries a genuine, dramatic COVID level
+shift (April 2020 collapsing to 54.0 from March's 117.2), useful for
+exercising [`outliers`](@ref)/level-shift detection on a real series
+rather than a synthetic one. See `data/DATASETS.md` for the one caveat:
+its exact redistribution terms were not independently re-verified when
+it was bundled.
+
 ## Diagnostics: everything R's `seasonal` package exposes
 
 `x13()` always requests the `.udg` diagnostics dump (`-S`), so every
@@ -160,7 +200,7 @@ a typed accessor layer over it (`StatsAPI` for the model-fit statistics,
 plain functions for everything else) reads it back out:
 
 ```julia
-result = x13(airline_passengers; start=(1949, 1), automdl=true, outlier=true,
+result = x13(dataset("airline"); automdl=true, outlier=true,
              transform=:auto, aictest=[:td, :easter])
 
 using StatsAPI
@@ -180,7 +220,7 @@ Any spec block without a dedicated keyword (`forecast`, `slidingspans`,
 `history`, ...) is reachable via `X13Spec`'s own `spec_args`:
 
 ```julia
-result = x13(airline_passengers; start=(1949, 1),
+result = x13(dataset("airline");
              spec_args = Dict("forecast.maxlead" => "0"))
 ```
 
@@ -194,7 +234,7 @@ directly:
 ```julia
 using SeasonalAdjustment, Plots
 
-result = x13(airline_passengers; start=(1949, 1))
+result = x13(dataset("airline"))
 plot(result; title="Airline Passengers: Original vs Seasonally Adjusted")
 ```
 
@@ -233,7 +273,7 @@ joined to the last observation, and the prediction interval as a shaded
 ribbon:
 
 ```julia
-result12 = x13(airline_passengers; start=(1949, 1), maxlead=12)
+result12 = x13(dataset("airline"); maxlead=12)
 forecastplot(result12; title="Airline Passengers: 12-Month Forecast")
 ```
 
@@ -255,7 +295,7 @@ month-by-month factor (a trading-day effect below; a Diwali-typed user
 regressor works the same way):
 
 ```julia
-result_td = x13(airline_passengers; start=(1949, 1), trading=true, transform=:log)
+result_td = x13(dataset("airline"); trading=true, transform=:log)
 componentplot(result_td; which=:trading_day, title="Airline Passengers: Trading-Day Factor")
 ```
 
@@ -266,7 +306,7 @@ stability diagnostics — here, the per-calendar-month average absolute
 seasonal-factor revision across sliding spans:
 
 ```julia
-result_ss = x13(airline_passengers; start=(1949, 1), spec_args=Dict("slidingspans" => ""))
+result_ss = x13(dataset("airline"); spec_args=Dict("slidingspans" => ""))
 spanplot(result_ss; kind=:slidingspans, title="Airline Passengers: Sliding-Spans Stability")
 ```
 
@@ -275,7 +315,7 @@ spanplot(result_ss; kind=:slidingspans, title="Airline Passengers: Sliding-Spans
 ## Forecasting, missing values, and component factors (W.7)
 
 ```julia
-result = x13(airline_passengers; start=(1949, 1), maxlead=12)
+result = x13(dataset("airline"); maxlead=12)
 
 f = forecast(result)                    # (dates=, point=, lower=, upper=), 95% by default
 f = forecast(result; level=0.99)        # re-runs -- the interval width is computed by the binary
@@ -283,14 +323,14 @@ b = backcast(result)
 
 # X-13 interpolates a missing value via its own regARIMA estimate,
 # substituting the -99999 sentinel R's na.x13() also uses:
-y_with_gap = copy(airline_passengers); y_with_gap[20] = missing
+y_with_gap = copy(dataset("airline").value); y_with_gap[20] = missing
 result2 = x13(y_with_gap; start=(1949, 1), missing_action=:x13, transform=:log)
 interpolated(result2)[20]               # the regARIMA-estimated replacement, not -99999
 
 # The estimated time path of a regression effect -- coef(result) gives
 # the Diwali/Easter/trading-day COEFFICIENT itself, this gives its
 # month-by-month factor:
-result3 = x13(airline_passengers; start=(1949, 1), trading=true, transform=:log)
+result3 = x13(dataset("airline"); trading=true, transform=:log)
 components(result3; which=:trading_day)
 
 using StatsAPI, StatsBase

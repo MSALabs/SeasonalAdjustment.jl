@@ -42,10 +42,15 @@ wrapper.
 
 ## Quick example
 
+Four real example datasets ship with the package (~30 KB, plain
+committed CSV — no download needed):
+
 ```julia
 using SeasonalAdjustment
 
-result = x13(airline_passengers; seasonal_order=(0,1,1,12))
+datasets()   # ["airline", "appliance", "appliance_q", "iip_india"]
+
+result = x13(dataset("airline"); seasonal_order=(0,1,1,12))
 result.seasonally_adjusted
 result.trend
 result.seasonal_factors
@@ -57,7 +62,7 @@ are the only two periods X-13ARIMA-SEATS accepts for seasonal
 adjustment:
 
 ```julia
-result = x13(quarterly_gdp; period=4, seasonal_order=(0,1,1,4))
+result = x13(dataset("appliance_q"); period=4, seasonal_order=(0,1,1,4))
 ```
 
 `X13Result` also carries the full `.udg` diagnostics dump the real

@@ -13,6 +13,11 @@ import StatsBase   # W.7: StatsBase.coeftable(r) is used fully-qualified,
                     # matching src/api.jl's own convention (see that
                     # file's own comment on why coeftable/vcov/summary
                     # aren't re-exported under their bare names)
+import TSAnalytics  # W.9: `using SeasonalAdjustment` does NOT bring the
+                    # TSAnalytics module name into test/Main scope (only
+                    # SeasonalAdjustment's OWN exports come through) --
+                    # needed to test the TSAnalytics.tsvalues/tsindex
+                    # extensions in test_datasets.jl fully-qualified
 
 # Each stage's own test file gets included here as it's implemented.
 # See development-sequence.md for the task sequence -- one @testset
@@ -33,6 +38,7 @@ import StatsBase   # W.7: StatsBase.coeftable(r) is used fully-qualified,
     include("test_w7.jl")          # W.7.2-W.7.8 -- forecast, missing values, components,
                                     #                vcov, summary/update, force/seasonalma,
                                     #                slidingspans/history
+    include("test_datasets.jl")    # W.9 -- bundled example datasets (data/*.csv)
 
     # Extended suite (R/Python-cross-validated extreme cases) -- opt-in
     # only, see test/extended/runtests.jl's own module comment. Kept out

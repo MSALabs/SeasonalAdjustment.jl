@@ -5,6 +5,10 @@ using Artifacts
 using LazyArtifacts
 using BusinessDays
 using TSAnalytics: tsvalues, tsindex
+import TSAnalytics    # W.9: needed to extend TSAnalytics.tsvalues/tsindex for
+                        # the (date=,value=) NamedTuple dataset() returns --
+                        # `using TSAnalytics: tsvalues, tsindex` alone does NOT
+                        # bring the bare module name into scope for that
 import StatsAPI
 import StatsBase
 using RecipesBase
@@ -32,6 +36,7 @@ include("api.jl")          # W.4 -- the user-facing x13(...) entry point
                             # W.5 -- StatsAPI contract, series(), show(),
                             #        select_order/open_output/import_spc
 include("plots.jl")        # W.6 -- RecipesBase.jl plot recipes
+include("datasets.jl")     # W.9 -- bundled example datasets (data/*.csv)
 
 # ---------------------------------------------------------------------
 # Part 2: native Julia engine (deferred -- see development-sequence.md,
@@ -81,6 +86,9 @@ export series, select_order, open_output, import_spc
 # `coeftable`/`vcov` above.
 export forecast, backcast, interpolated, components, update,
     slidingspans, revision_history, X13Summary
+
+# W.9 -- bundled example datasets.
+export dataset, datasets, dataset_info, DatasetInfo
 
 # W.6 -- plot recipes. `plot`/`plot!` themselves are NOT exported (or
 # even defined) here -- they belong to whatever plotting backend the
