@@ -256,7 +256,7 @@ Parses `AutoOutlier\$<TYPE><YEAR>.<PERIOD>` keys (e.g. `AutoOutlier\$AO1951.May`
 in the committed fixture). Mirrors R's `seasonal::outlier(x, full=FALSE)`.
 
 `label` (e.g. `"AO1951.May"`) is the `AutoOutlier\$` prefix stripped and
-NOTHING ELSE -- confirmed directly (W.4a) that this exact string is
+NOTHING ELSE -- confirmed directly that this exact string is
 itself a valid `regression_variables` entry the binary re-accepts
 verbatim, reproducing the identical estimated coefficient; **do not**
 convert the month name to a number for `label`. `period`, by contrast, IS
@@ -428,7 +428,7 @@ end
 `nefobs` -- the effective observation count AFTER differencing (131 in
 the committed fixture, vs. `StatsAPI.nobs`'s 144) -- distinct from plain
 `nobs` because ARIMA differencing costs observations. Needed by
-`residplot` (W.6): regARIMA residuals run to `nefobs`, not `nobs`, so the
+`residplot`: regARIMA residuals run to `nefobs`, not `nobs`, so the
 residual series is shorter than `r.observed`/`r.dates` by exactly that
 difference, confirmed directly against the fixture (144-131=13 fewer
 residual observations than the original series).
@@ -460,10 +460,11 @@ this fixture happens to exercise, so a `"-"` or blank flag is treated
 the same conservative way as no flag at all, not guessed to mean
 something more specific).
 
-Distinct from [`spectral_peaks`](@ref) (W.5), which only reports WHICH
+Distinct from [`spectral_peaks`](@ref), which only reports WHICH
 series has any significant peak at all, not which frequency -- this is
-the finer-grained data `spectrumplot` (W.6) needs for its frequency
-markers, explicitly deferred out of W.5's own scope for exactly this.
+the finer-grained data `spectrumplot` needs for its frequency
+markers, deferred out of the plain diagnostics-accessor scope for
+exactly this.
 """
 function spectrum_peaks(d::AbstractDict; series::Symbol = :sa)
     haskey(_SPECTRUM_UDG_PREFIX, series) || throw(ArgumentError(

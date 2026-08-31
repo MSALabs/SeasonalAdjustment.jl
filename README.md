@@ -6,33 +6,30 @@
 Official-statistics-grade seasonal adjustment for Julia — X-11,
 RegARIMA, and SEATS — built on the same trusted, freely-redistributable
 Census Bureau binary ([`x13prebuilt`](https://github.com/x13org/x13prebuilt))
-that R's `seasonal` and Python's `statsmodels.tsa.x13` both wrap
-internally, with **India- and other-market-aware calendar effects**
-(Diwali, Holi, and beyond) fed into RegARIMA via `x13prebuilt`'s own
-user-defined-regressor mechanism — something neither R's nor Python's
-default setup provides out of the box.
+national statistical offices run in production, with **India- and
+other-market-aware calendar effects** (Diwali, Holi, and beyond) fed
+into RegARIMA via `x13prebuilt`'s own user-defined-regressor mechanism
+— something not available out of the box elsewhere.
 
 Part of the [TSAnalytics.jl](https://github.com/MSALabs/TSAnalytics.jl)
 project.
 
 ## Status
 
-Part 1 (the `x13prebuilt` wrapper, W.0-W.4) is complete. Part 2 (a
-from-scratch native Julia engine) hasn't started yet. See
-`development-sequence.md` for the full roadmap and current
-task-by-task status.
+The `x13prebuilt` wrapper (X-11, RegARIMA, SEATS, diagnostics, plotting,
+bundled datasets) is complete. A from-scratch native Julia engine hasn't
+started yet.
 
 ## Design
 
 This package deliberately departs from TSAnalytics.jl's own
 "reference, never port" principle for its core functionality — it wraps
 the actual Census Bureau X-13ARIMA-SEATS binary directly, rather than
-reimplementing X-11/RegARIMA/SEATS from scratch, since both R and
-Python already trust this exact binary for the hardest parts of this
-problem (SEATS's spectral factorization especially). A from-scratch
-native Julia engine remains a planned future track (`development-sequence.md`,
-Part 2), not abandoned, just deliberately sequenced behind a working
-wrapper.
+reimplementing X-11/RegARIMA/SEATS from scratch, since this exact binary
+is already trusted for the hardest parts of this problem (SEATS's
+spectral factorization especially). A from-scratch native Julia engine
+remains a planned future track, not abandoned, just deliberately
+sequenced behind a working wrapper.
 
 ## Installation
 
@@ -66,10 +63,9 @@ result = x13(dataset("appliance_q"); period=4, seasonal_order=(0,1,1,4))
 ```
 
 `X13Result` also carries the full `.udg` diagnostics dump the real
-binary produces, through a typed accessor layer (matching R's own
-`seasonal` package: `qs`, `outliers`, `fivebestmdl`, `mstats`,
-`seasonality_tests`, and the `StatsAPI` contract -- `aic`, `bic`,
-`coef`, `coefnames`, ...):
+binary produces, through a typed accessor layer: `qs`, `outliers`,
+`fivebestmdl`, `mstats`, `seasonality_tests`, and the `StatsAPI`
+contract -- `aic`, `bic`, `coef`, `coefnames`, ...):
 
 ```julia
 using StatsAPI
@@ -92,11 +88,11 @@ real backend to draw):
 
 ```julia
 using Plots
-plot(result)                 # original + seasonally adjusted, R's plot.seas
+plot(result)                 # original + seasonally adjusted
 residplot(result)            # regARIMA residuals
 monthplot(result)            # seasonal factors by calendar period, with SI-ratio stems
-spectrumplot(result)         # spectral peaks -- neither R nor Python ships this one
-seasonalplot(result)         # one line per year, monthplot's transpose -- neither R nor Python ships this one
+spectrumplot(result)         # spectral peaks
+seasonalplot(result)         # one line per year, monthplot's transpose
 forecastplot(result)         # observed + forecast + prediction-interval ribbon
 residdiagplot(result)        # residual series + ACF/PACF/histogram panel
 componentplot(result)        # trading-day/holiday/user/outlier factor time paths
@@ -104,7 +100,7 @@ spanplot(result)             # sliding-spans / revision-history diagnostics
 ```
 
 Forecasts, missing-value handling, component-factor accessors, and
-`force`/`seasonalma` (W.7):
+`force`/`seasonalma`:
 
 ```julia
 f = forecast(result; level = 0.95)     # (dates=, point=, lower=, upper=)

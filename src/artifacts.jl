@@ -100,7 +100,7 @@ artifact and returns its directory.
 
 Upstream serves the Windows binary as a plain `.zip`. This looked like
 it should be exactly what Julia's normal `@artifact_str` installer
-handles -- and W.1's original verification treated it as confirmed
+handles -- and an early verification pass treated it as confirmed
 working, but that check only ever re-found a copy this package's own
 `tools/generate_artifacts.jl` had already placed in the local artifact
 cache; the genuinely fresh download path was never actually exercised
@@ -132,7 +132,7 @@ end
 Resolves the x13prebuilt artifact for the running platform and returns
 the actual invokable executable path within it -- not just the
 artifact directory, since each platform's archive has a different
-internal layout (confirmed directly, see handoff/w1-artifacts.md):
+internal layout (confirmed directly):
 
 - Linux: a bare executable file at the artifact root (`x13ashtml`),
   installed via `_linux_x13_artifact_dir` since it isn't an
@@ -216,9 +216,10 @@ end
 
 `true` if the x13prebuilt binary can be resolved AND actually invoked
 (a trivial no-args run) on this platform, `false` otherwise (never
-throws). Exists so W.3/W.4 can give a clear, actionable error --
-"the x13prebuilt binary could not be resolved for this platform" --
-instead of a cryptic subprocess failure three layers deep.
+throws). Exists so callers running or parsing a spec can give a clear,
+actionable error -- "the x13prebuilt binary could not be resolved for
+this platform" -- instead of a cryptic subprocess failure three layers
+deep.
 """
 function x13_binary_available()
     path = try

@@ -85,12 +85,12 @@ end
 """
     _subseries_layout(values, period) -> (positions::Vector{Float64}, means::Vector{Float64})
 
-The generic cycle-subseries layout `monthplot` (W.6) needs: for `period`
+The generic cycle-subseries layout `monthplot` needs: for `period`
 bands (12 or 4), `positions[k] = k - 0.5` (the mean-bar x-position,
 centred in band `[k-1, k)`) and `means[k]` = the mean of every `values`
 entry whose 1-indexed position `i` satisfies `((i-1) % period) + 1 ==
 k`. Deliberately period-generic and free of any `X13Result`/date
-dependency -- per the handoff's own §7, this is designed so the same
+dependency -- designed so the same
 geometry can move to TSAnalytics.jl later for a generic seasonal-
 subseries plot, with SA's own `monthplot` becoming a thin specialisation
 adding the SI-ratio overlay on top.
@@ -203,11 +203,11 @@ end
 
 Matches R's `residplot` -- regARIMA residuals plotted against `r.dates`.
 
-**A real correction to the plot handoff's own design, not just an
-implementation detail**: the handoff assumed `.rsd` is shorter than
+**A real correction, not just an
+implementation detail**: an earlier design assumed `.rsd` is shorter than
 `r.dates` (`nefobs`, 131 in the committed fixture, vs. `nobs`, 144) and
 built the date axis around tail-aligning a shorter residual window.
-Checked directly against the real binary this session (re-running BOTH
+Checked directly against the real binary (re-running BOTH
 the exact automdl spec that produces the committed `auto_test.udg`
 `nefobs=131`, AND the separately-committed `resid_test.rsd` fixture's
 own spec, with `estimate{save=(rsd)}` added): the real `.rsd` file has
@@ -224,11 +224,11 @@ mean-zero by construction and it costs nothing).
 
 Throws `ArgumentError` if `r.residuals` is empty.
 
-**A real, confirmed architectural finding, not in the handoff at all**:
+**A real, confirmed architectural finding**:
 `residplot`/`monthplot`/`spectrumplot` can NOT be plain series-type
-recipes (`@recipe function f(::Type{Val{:name}}, r::X13Result; ...)`) as
-the handoff specified, because `X13Result` ALSO has its own bare type
-recipe (for `plot(r)`) -- confirmed directly this session (a real
+recipes (`@recipe function f(::Type{Val{:name}}, r::X13Result; ...)`),
+because `X13Result` ALSO has its own bare type
+recipe (for `plot(r)`) -- confirmed directly (a real
 Plots.jl/GR smoke test where `residplot(r)` silently rendered `plot(r)`'s
 OWN series instead of the residual data, byte-identical PNG output,
 caught only by hashing the actual rendered images, not by
@@ -293,7 +293,7 @@ of this chart: the stems show the scatter the mean bar smooths through).
 | `siratios` | `Bool` | `true` | Overlay D8 SI ratios as stems (`:seasonal` only -- ignored, with a warning, under `:irregular`: SI ratios are seasonal-plus-irregular by construction, so the overlay is meaningless there) |
 
 D8 is fetched via [`series`](@ref)`(r, :d8)` -- already present with no
-re-run for any `x13()`-produced result (W.6 added `:d8` to `x13()`'s
+re-run for any `x13()`-produced result (`:d8` is part of `x13()`'s
 always-saved set for exactly this); a hand-built `X13Spec`/`run_x13`
 result triggers `series`'s own automatic (and announced) re-run instead.
 
@@ -361,7 +361,7 @@ end
 """
     spectrumplot(r::X13Result; series=:sa)
 
-Not in either reference pipeline -- [`spectrum_peaks`](@ref) (W.6) makes
+Not in either reference pipeline -- [`spectrum_peaks`](@ref) makes
 it nearly free, and spectral peaks are how residual seasonality and
 trading-day effects are actually judged in official statistics. Plots
 the confirmed real spectrum curve (`.sp0`/`.sp1`/`.sp2`/`.spr`, fetched
@@ -417,13 +417,13 @@ const _backcast_fn = backcast
 """
     _seasonal_layout(values, dates, period) -> Vector{@NamedTuple{year::Int, x::Vector{Int}, y::Vector{Float64}}}
 
-The layout [`seasonalplot`](@ref) (W.8.1) needs: one entry per CALENDAR
+The layout [`seasonalplot`](@ref) needs: one entry per CALENDAR
 YEAR present in `dates`, `x` the period-of-year (`1:12` or `1:4`) for
 each observation in that year, `y` the matching values -- a partial
 year (the series doesn't start/end on a year boundary) plots short
 rather than being dropped, the same way a ragged `monthplot` band does.
 Deliberately period-generic and `X13Result`-free (values/dates/period
-only), matching W.6 §7's own design intent for `_subseries_layout` --
+only), matching `_subseries_layout`'s own design intent --
 `seasonalplot` is this layout's transpose of `monthplot`'s.
 """
 function _seasonal_layout(values::AbstractVector{<:Real}, dates::AbstractVector{Date}, period::Integer)
@@ -453,7 +453,7 @@ const _SEASONALPLOT_SERIES_FIELD = Dict(
 """
     seasonalplot(r::X13Result; series=:seasonal, polar=false, highlight=nothing)
 
-**(W.8.1) The genuinely missing chart** -- `monthplot`'s transpose:
+** The genuinely missing chart** -- `monthplot`'s transpose:
 calendar period on the x-axis, one line per YEAR, all overlaid, so an
 evolving seasonal pattern (the shape of the year drifting) is visible at
 a glance, the thing a subseries plot like `monthplot` can't show
@@ -512,7 +512,7 @@ end
 """
     forecastplot(r::X13Result; backcast=false, level=0.95, history=nothing)
 
-**(W.8.2)** Observed series, then the forecast extension as a distinct
+Observed series, then the forecast extension as a distinct
 series joined to the last observation (`(dates[end], observed[end])`
 prepended, so the line doesn't start floating one period later), with
 the prediction interval drawn via a `ribbon`-attributed series covering
@@ -526,7 +526,7 @@ interval at a known observation).
 | `history` | `nothing`, `Int` | `nothing` | Show only the last `n` observations before the forecast -- truncates the OBSERVED series only, never the forecast/backcast extensions |
 
 `.fct`/`.bct` already carry point/lower/upper on the original scale
-(W.7.2), so nothing here needs back-transforming.
+, so nothing here needs back-transforming.
 """
 RecipesBase.@userplot ForecastPlot
 @recipe function f(fp::ForecastPlot; backcast::Bool = false, level::Real = 0.95, history::Union{Nothing,Int} = nothing)
@@ -573,9 +573,9 @@ end
 """
     residdiagplot(r::X13Result; panels=[:series,:acf,:histogram], lags=24)
 
-**(W.8.3)** The standard X-13 residual review panel. Uses the binary's
-OWN `.acf`/`.pcf`/`.ac2` (`check{}`-block tables, W.8's own reference
-work) rather than recomputing from `r.residuals`, so the plotted values
+The standard X-13 residual review panel. Uses the binary's
+OWN `.acf`/`.pcf`/`.ac2` (`check{}`-block tables) rather than
+recomputing from `r.residuals`, so the plotted values
 match what X-13 itself reports.
 
 | Keyword | Values | Default | Meaning |
@@ -585,7 +585,7 @@ match what X-13 itself reports.
 
 **`:qq` deliberately throws** rather than silently rendering nothing --
 it needs a normal quantile function this package doesn't have (the same
-open dependency question W.8's own handoff raises: is a
+open dependency question as elsewhere: is a
 `Distributions.jl` dependency worth adding for one panel? Not resolved
 here, so not silently guessed at either).
 
@@ -660,7 +660,7 @@ end
 """
     componentplot(r::X13Result; which=:all, reference=true)
 
-**(W.8.4) Closes the India-calendar loop**: `coef(r)` gives the Diwali
+** Closes the India-calendar loop**: `coef(r)` gives the Diwali
 coefficient itself; this shows its month-by-month path.
 
 | Keyword | Values | Default | Meaning |
@@ -730,19 +730,19 @@ end
 """
     spanplot(r::X13Result; kind=:slidingspans)
 
-**(W.8.5, done last per the handoff's own sequencing -- its scope
-genuinely depends on [`slidingspans`](@ref)/[`revision_history`](@ref),
-W.7.8)**. Those two accessors deliberately surface `.udg`'s HEADLINE
-summary statistics rather than the per-span TIME SERIES the original
-handoff's own sketch envisioned (`slidingspans.sfspans` etc. -- separate
-saveable tables, not modeled by W.7.8, see that deliverable's own
-"honest gap" note) -- so this recipe's scope is correspondingly
+Its scope
+genuinely depends on [`slidingspans`](@ref)/[`revision_history`](@ref).
+Those two accessors deliberately surface `.udg`'s HEADLINE
+summary statistics rather than the per-span TIME SERIES an earlier
+design sketch envisioned (`slidingspans.sfspans` etc. -- separate
+saveable tables, not modeled here -- a real, honest gap) -- so this
+recipe's scope is correspondingly
 reduced: `kind=:slidingspans` draws the per-period average seasonal-
 factor revision (`.udg`'s own `s3.a.brk.pNN` breakdown, the closest real
 per-period detail actually exposed); `kind=:history` draws the
 concurrent-vs-most-recent SEASONALLY ADJUSTED average-absolute-revision
 series `revision_history` already collects. NOT the full "each span its
-own line" chart the original handoff sketched -- that needs the raw
+own line" chart originally sketched -- that needs the raw
 per-span tables, a genuine future extension, not silently pretended here.
 """
 RecipesBase.@userplot SpanPlot

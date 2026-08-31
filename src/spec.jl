@@ -70,14 +70,13 @@ can. Used by [`static`](@ref) to resolve an automatic spec's `:auto`
 choices into an explicit, reproducible one.
 
 Builds and [`validate!`](@ref)s a spec from `y` (a plain numeric
-series -- [`x13`](@ref) (W.4) is responsible for bridging
+series -- [`x13`](@ref) is responsible for bridging
 TSAnalytics.jl-style dated series into this) and keyword arguments,
 mixing Python-style curated options (`transform`, `outlier`,
 `seasonal_order`, `maxorder`, `maxdiff`, `trading` -- matching
 `statsmodels.tsa.x13.x13_arima_analysis`'s own parameter names, per
 CLAUDE.md's genuine-superset requirement) with R-style raw passthrough
-(`regression_variables`, `arima_model`) -- see handoff/w2-spec.md
-section 2 for the design rationale. Throws `ArgumentError` immediately
+(`regression_variables`, `arima_model`). Throws `ArgumentError` immediately
 (before any subprocess is ever spawned) if the spec violates one of the
 rules `validate!` checks, each confirmed directly against the real
 binary, not hypothetical.
@@ -94,12 +93,12 @@ broader "arbitrary frequency" support to add here or anywhere upstream
 of it.
 
 `residuals=true` adds an `estimate { save = (rsd) }` block -- confirmed
-directly against the real binary (`handoff/udg_and_residuals/`) that
+directly against the real binary that
 regARIMA residuals are saved from `estimate{}`, a distinct spec block
 from `x11{}`/`seats{}`, since they're a property of the underlying
 model fit rather than the decomposition step.
 
-`spec_args` (W.5.4) is a raw `"block.setting" => "value"` passthrough
+`spec_args` is a raw `"block.setting" => "value"` passthrough
 for any spec block with no typed field of its own (`forecast`,
 `slidingspans`, `history`, `check`, `pickmdl`, `force`, ...) -- see
 [`render`](@ref)'s own docstring for the exact rendering rules and
@@ -121,22 +120,22 @@ horizon -- so this package genuinely CAN extend and forecast properly,
 and changing nothing by default preserves that. Callers wanting R/Python
 parity write `spec_args = Dict("forecast.maxlead" => "0")` explicitly.
 
-**(W.7.2)** `maxlead` is a typed field (rather than only reachable via
+`maxlead` is a typed field (rather than only reachable via
 `spec_args`) specifically so [`validate!`](@ref) can enforce X-13's own
 `pfcst=120` program limit before any subprocess is spawned. `maxback`
 (the backcast horizon) has no equivalent typed field -- reach it via
 `spec_args["forecast.maxback"]` -- since nothing needs to validate it
 independently of `maxlead`'s own limit.
 
-**(W.7.7)** `force`/`force_target` (forcing seasonally adjusted annual
+`force`/`force_target` (forcing seasonally adjusted annual
 totals to match the original series -- `force.type`/`force.target`) and
 `seasonalma` (the seasonal moving-average filter choice --
 `x11.seasonalma`) are typed fields with every accepted keyword
 CONFIRMED directly against the real binary (not transcribed from the
 Reference Manual alone) -- see `_FORCE_TYPE_KEYWORDS`/
 `_FORCE_TARGET_KEYWORDS`/`_SEASONALMA_KEYWORDS`. `force_target`'s real
-spelling is `:calendaradj`, not `:caladjust` as an earlier draft of the
-W.7 handoff guessed -- the binary's own error message settled it.
+spelling is `:calendaradj`, not `:caladjust` as an earlier draft
+guessed -- the binary's own error message settled it.
 """
 function X13Spec(
     y::AbstractVector{<:Real};
@@ -215,14 +214,13 @@ end
     validate!(spec::X13Spec) -> X13Spec
 
 Checks real requirements confirmed directly against the real
-`x13prebuilt` binary during this project's development (see
-handoff/w2-spec.md section 2 and development-sequence.md), throwing
+`x13prebuilt` binary during this project's development, throwing
 `ArgumentError` with a message that names the actual binary error it's
 preventing -- fast, native, BEFORE any subprocess round-trip:
 
 1. An explicit ARIMA model (`arima_model`/`seasonal_order`) and
    `automdl`/`maxorder`/`maxdiff` can't both be given (found while
-   implementing W.4's `maxorder`/`maxdiff` passthrough).
+   implementing `maxorder`/`maxdiff` passthrough).
 2. `period` must be 4 (quarterly) or 12 (monthly) -- confirmed directly
    against the real binary, the ONLY two values it accepts for seasonal
    adjustment at all.
@@ -240,7 +238,7 @@ preventing -- fast, native, BEFORE any subprocess round-trip:
    with no explicit `x11_mode` hits the real binary's own log-transform
    error, the same as setting `x11_mode=:multiplicative` by hand would).
    Only `:additive`/`:pseudoadditive` are exempt.
-6. `spec_args` (W.5.4) can't name a block (`transform`, `x11`, `automdl`,
+6. `spec_args` can't name a block (`transform`, `x11`, `automdl`,
    `regression`, `estimate`, `series`, `arima`, `seats`, `outlier`) this
    struct already renders via a typed field -- two sources of truth for
    one block is a silent-misconfiguration risk worth failing loudly on,
@@ -249,18 +247,18 @@ preventing -- fast, native, BEFORE any subprocess round-trip:
    empty block (`"slidingspans" => ""` -> `slidingspans { }`); a
    non-empty value on a dotless key has no defined shape and is rejected
    rather than guessed at.
-7. **(W.7.1)** Every symbol in `save` must be a real X-13 save keyword --
+7. Every symbol in `save` must be a real X-13 save keyword --
    checked against `_KNOWN_TABLES` (generated from the full 281-entry
-   catalogue in `handoff/x13-saveable-tables.md`, see
+   catalogue, see
    `tools/generate_known_tables.jl`). `print`-only keywords (`none`,
    `all`, `alltables`, `default`, `brief` -- valid for `print`, invalid
    for `save`, confirmed directly, Manual §3.2) get their own, more
    specific error rather than falling into the generic "not a recognized
-   table" message. This closes a real gap: before W.7.1, an unrecognized
+   table" message. This closes a real gap: previously, an unrecognized
    or print-only symbol in `save` was accepted silently here and either
    produced a confusing binary-side error (the old code rendered
    `save=` verbatim into `x11{}`/`seats{}` regardless of which block the
-   table actually belonged to) or, under W.7.1's own per-block routing,
+   table actually belonged to) or, under the newer per-block routing,
    would have been silently dropped instead -- worse. Reject it up
    front, the same fast-fail convention every other rule here uses.
 """
@@ -408,9 +406,9 @@ function validate!(spec::X13Spec)
                 "never for `save` (confirmed directly, Reference Manual §3.2)",
             ))
             s in _KNOWN_TABLES || throw(ArgumentError(
-                "save=[...] contains :$s, which isn't a recognized X-13 save table -- see " *
-                "handoff/x13-saveable-tables.md's catalogue ($(length(_KNOWN_TABLES)) valid " *
-                "entries); the file extension is often NOT the X-11 table number (e.g. " *
+                "save=[...] contains :$s, which isn't a recognized X-13 save table -- " *
+                "the known catalogue has $(length(_KNOWN_TABLES)) valid " *
+                "entries; the file extension is often NOT the X-11 table number (e.g. " *
                 "holiday factors, table A7, save as :hol, not :a7)",
             ))
         end
@@ -505,15 +503,15 @@ working against the real binary throughout this project's development
 (`series { ... }`, `transform { function = ... }`, `regression { ... }`,
 `arima { model = ... }`, `automdl { }`, `outlier { }`,
 `estimate { save = (rsd) }`, `x11 { ... }` / `seats { ... }`, each block
-only emitted if relevant, followed by any `spec_args` (W.5.4) blocks).
+only emitted if relevant, followed by any `spec_args` blocks).
 
-**(W.7.1) `save` is routed per-table to the spec block that actually owns
-it**, not dumped unconditionally into `x11{}`/`seats{}`. Before W.7.1
-this was a real, confirmed bug: `save=[:hol]` (the regression-block
+** `save` is routed per-table to the spec block that actually owns
+it**, not dumped unconditionally into `x11{}`/`seats{}`. This was
+previously a real, confirmed bug: `save=[:hol]` (the regression-block
 holiday-factor table) rendered `x11 { save = (hol) }`, which the real
 binary rejects, since `.hol` is a `regression{}` table, not an `x11{}`
-one -- see `handoff/x13-saveable-tables.md`'s own "critical naming trap"
-section and `src/known_tables.jl`'s generated `_TABLE_BLOCK`, which this
+one -- a critical naming trap resolved by
+`src/known_tables.jl`'s generated `_TABLE_BLOCK`, which this
 now keys off. Practically: `series(r, :hol)`'s automatic re-run (and any
 hand-built `X13Spec(y; save=[:hol, :rsd, :fct])` mixing tables from
 different blocks) now lands each table in the right block --

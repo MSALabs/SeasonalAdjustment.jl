@@ -38,9 +38,9 @@ parse_output
 parse_udg
 ```
 
-## Diagnostics (W.5)
+## Diagnostics
 
-Typed accessors over `.udg`, matching R's `seasonal` package. Each
+Typed accessors over `.udg`, the binary's own diagnostics dump. Each
 accepts either a raw `Dict` (fixture/testable with no binary) or an
 `X13Result` directly.
 
@@ -66,7 +66,7 @@ spectrum_peaks
 `X13Result` implements `StatsAPI.aic`/`bic`/`aicc`/`loglikelihood`/
 `nobs`/`residuals`/`coef`/`coefnames`/`stderror`/`dof`/`vcov` -- use
 these fully-qualified (`StatsAPI.aic(r)`), not re-exported under their
-bare names. `StatsAPI.vcov` (W.7.5) reads the real regression/ARIMA
+bare names. `StatsAPI.vcov` reads the real regression/ARIMA
 coefficient covariance matrix from `.rcm`/`.acm`; `StatsBase.coeftable`
 (also fully-qualified, `StatsBase` already exports its own generic)
 gives Estimate/Std.Error/t-value for every coefficient with no `vcov`
@@ -87,7 +87,7 @@ open_output
 import_spc
 ```
 
-## Forecasts, missing values, components, model summary (W.7)
+## Forecasts, missing values, components, model summary
 
 `forecast`/`backcast` re-run automatically (same convention as
 [`series`](@ref)) whenever the requested table or `level` isn't already
@@ -111,12 +111,11 @@ slidingspans
 revision_history
 ```
 
-## Plotting (W.6)
+## Plotting
 
 `RecipesBase.jl` recipes -- load a plotting backend (`using Plots`, a
-Makie backend, ...) to actually draw. `plot(r::X13Result)` (R's own
-`plot.seas`/Python's `.plot()` in one recipe) needs no separate import;
-`residplot`/`monthplot`/`spectrumplot` are each a
+Makie backend, ...) to actually draw. `plot(r::X13Result)` needs no
+separate import; `residplot`/`monthplot`/`spectrumplot` are each a
 `RecipesBase.@userplot` wrapper (NOT a plain series-type recipe --
 `X13Result` already has its own bare type recipe for `plot(r)`, which
 would otherwise silently shadow a same-type series-type recipe; see
@@ -140,11 +139,11 @@ monthplot!
 spectrumplot!
 ```
 
-### More recipes (W.8)
+### More recipes
 
 `seasonalplot` is `monthplot`'s transpose (one line per calendar year);
-`forecastplot`/`componentplot` build on the W.7 accessors of the same
-name; `residdiagplot` uses the real `.acf`/`.pcf`/`.ac2` tables rather
+`forecastplot`/`componentplot` build on the accessors of the same
+name above; `residdiagplot` uses the real `.acf`/`.pcf`/`.ac2` tables rather
 than recomputing from `r.residuals`; `spanplot` is deliberately scoped
 to the headline `.udg` summaries `slidingspans`/`revision_history`
 expose, not full per-span time series (see `spanplot`'s own docstring).
@@ -196,11 +195,11 @@ easter_regressor
 custom_holiday_regressor
 ```
 
-## Bundled datasets (W.9)
+## Bundled datasets
 
 Four real example datasets ship with the package (`data/*.csv`, ~30 KB
 total, plain committed CSV rather than Artifacts.toml -- see
-`data/DATASETS.md` for full provenance): `airline` (Box & Jenkins'
+`dataset_info(name)` for full provenance on each): `airline` (Box & Jenkins'
 Series G, this package's own verification baseline), `appliance` (the
 X-13 Reference Manual's own worked example, a genuinely different
 seasonal shape from `airline`), `appliance_q` (`appliance` aggregated to

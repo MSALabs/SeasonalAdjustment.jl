@@ -20,7 +20,7 @@ const _DATA_DIR = normpath(joinpath(@__DIR__, "..", "data"))
 
 Reads a `date,value` CSV (header row, ISO-8601 date, `Float64` value) --
 the one format every bundled dataset uses, confirmed directly against
-each committed file rather than assumed from the handoff alone (`data/
+each committed file (`data/
 iip_india.csv` originally shipped in a different raw format --quoted
 headers, `"Mon YYYY"` dates -- and was normalized to this same shape at
 authoring time specifically so this reader stays the only one needed;
@@ -48,7 +48,7 @@ Provenance for one bundled dataset (`dataset_info(name)`) -- `name`/
 `units`/`retrieved`/`notes`/`kind`. `kind` is one of `:published`
 (a real, sourced series), `:derived` (built from another shipped
 dataset -- `appliance_q` from `appliance`), or `:synthetic` (none
-shipped yet; reserved for handoff §10.1/§10.2's still-outstanding
+shipped yet; reserved for still-outstanding
 teaching examples) -- added now rather than deferred, since this
 session already ships one `:derived` dataset that needs to say so
 structurally, not just in prose.
@@ -103,12 +103,10 @@ const _REGISTRY = Dict{String,DatasetInfo}(
         "thousands of passengers", nothing,
         "The canonical seasonal adjustment example. Strongly multiplicative; " *
         "X-13 selects a log transform. Also this package's own verification " *
-        "baseline (handoff/verification/airline_baseline/), so book output " *
-        "and test fixtures agree by construction. X-13 detects a real, " *
-        "non-obvious additive outlier at May 1951 under this package's own " *
-        "fixture spec (values 163/172/178 for Apr/May/Jun -- not visually " *
-        "obvious; detection runs on regARIMA residuals after differencing, " *
-        "not levels). See test/test_datasets.jl's own regression test for it.",
+        "baseline. X-13 detects a real, non-obvious additive outlier at May " *
+        "1951 under this package's own fixture spec (values 163/172/178 for " *
+        "Apr/May/Jun -- not visually obvious; detection runs on regARIMA " *
+        "residuals after differencing, not levels).",
         :published,
     ),
     "appliance" => DatasetInfo(
@@ -163,13 +161,12 @@ const _REGISTRY = Dict{String,DatasetInfo}(
         "index (2011-12=100)", nothing,
         "The real Indian monthly series this package's own India-calendar " *
         "layer (INDIA_NSE, custom_holiday_regressor) needs a genuine worked " *
-        "example against -- resolves the licensing blocker the source " *
-        "handoff (w9-datasets-handoff.md §7.2) left open, though the exact " *
-        "redistribution terms were not independently re-verified here; " *
-        "revisit before any wider publication. Carries a real, dramatic " *
-        "COVID level shift (April 2020: 54.0, down from 117.2 in March -- " *
-        "the sharpest single-month move in the series), which also happens " *
-        "to resolve handoff §10.5's separately-flagged need for a real " *
+        "example against -- resolves a previously open licensing blocker, " *
+        "though the exact redistribution terms were not independently " *
+        "re-verified here; revisit before any wider publication. Carries a " *
+        "real, dramatic COVID level shift (April 2020: 54.0, down from " *
+        "117.2 in March -- the sharpest single-month move in the series), " *
+        "which also fills a separately-flagged need for a real " *
         "level-shift example. Column normalized from the source's own " *
         "\"in.iip.2011.12\" / \"Mon YYYY\" format to this package's standard " *
         "date,value/ISO-8601 shape at authoring time -- see " *

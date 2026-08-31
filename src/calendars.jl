@@ -162,7 +162,7 @@ weekend set), not just named holidays.
 Errors loudly (`ArgumentError`) if any year spanned by the range has no
 `table_holidays` entry in `cal` -- silently falling back to fixed
 holidays only would look complete while quietly missing most of a
-real moveable-feast calendar. See handoff/w0-calendars.md section 5.
+real moveable-feast calendar.
 """
 function holidaylist(cal::TableCalendar, from::Date, to::Date; include_weekends::Bool = false)
     lo, hi = min(from, to), max(from, to)
@@ -400,10 +400,11 @@ that simply didn't occur should audit coverage with `holidaylist`
 first, which errors loudly on an untabulated year.
 
 This is the exact mechanism verified end-to-end against the real
-`x13prebuilt` binary in `handoff/verification/diwali_regressor_proof`
-(via `regression { user = (...) usertype = (holiday) }`) -- this
-function produces the `data` vector that block needs; W.2 is
-responsible for writing the block itself.
+`x13prebuilt` binary (via `regression { user = (...) usertype = (holiday) }`,
+a synthetic Diwali-effect test that genuinely shifted the fitted
+seasonal factors) -- this function produces the `data` vector that
+block needs; the spec-rendering layer is responsible for writing the
+block itself.
 """
 function custom_holiday_regressor(from::Date, to::Date, cal::Calendar, holiday_years_present::Function; freq::Symbol = :month)
     periods = _periods_for(freq, from, to)

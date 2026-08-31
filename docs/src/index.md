@@ -7,20 +7,17 @@ CurrentModule = SeasonalAdjustment
 Official-statistics-grade seasonal adjustment for Julia — X-11,
 RegARIMA, and SEATS — built on the same trusted, freely-redistributable
 Census Bureau binary ([`x13prebuilt`](https://github.com/x13org/x13prebuilt))
-that R's `seasonal` and Python's `statsmodels.tsa.x13` both wrap
-internally, with **India- and other-market-aware calendar effects**
-(Diwali, Holi, and beyond) fed into RegARIMA via `x13prebuilt`'s own
-user-defined-regressor mechanism — something neither R's nor Python's
-default setup provides out of the box.
+national statistical offices run in production, with **India- and
+other-market-aware calendar effects** (Diwali, Holi, and beyond) fed
+into RegARIMA via `x13prebuilt`'s own user-defined-regressor mechanism
+— something not available out of the box elsewhere.
 
 Part of the [TSAnalytics.jl](https://github.com/MSALabs/TSAnalytics.jl)
 project.
 
-**Status:** Part 1 (the `x13prebuilt` wrapper, tasks W.0-W.4) is
-complete. See
-[`development-sequence.md`](https://github.com/MSALabs/SeasonalAdjustment.jl/blob/main/development-sequence.md)
-in the repository root for the full staged roadmap, including Part 2
-(a from-scratch native Julia engine, not yet started).
+**Status:** the `x13prebuilt` wrapper (X-11, RegARIMA, SEATS,
+diagnostics, plotting, bundled datasets) is complete. A from-scratch
+native Julia engine hasn't started yet.
 
 - New to the package? Start with [Getting Started](getting_started.md).
 - Looking for a specific function? See the [API Reference](api.md).
@@ -30,16 +27,14 @@ in the repository root for the full staged roadmap, including Part 2
 0. **Wrap the real binary, don't reimplement it — the one deliberate
    exception to the TSAnalytics.jl family's usual "reference, never
    port" rule.** Rather than reimplementing X-11/RegARIMA/SEATS from
-   scratch, this package's core (Part 1) wraps `x13prebuilt` directly —
-   the exact same binary R's and Python's own wrapper packages call
-   internally. Both ecosystems already trust this binary for the
-   hardest part of the whole problem (SEATS's spectral factorization
+   scratch, this package wraps `x13prebuilt` directly — the exact
+   binary national statistical offices already trust for the hardest
+   part of the whole problem (SEATS's spectral factorization
    especially); wrapping it directly gets correct, production-grade
    output immediately rather than spending months re-deriving the
    hardest mathematics in the field before shipping anything. A
-   from-scratch native Julia engine remains a real, planned track
-   (Part 2), deliberately sequenced behind a working wrapper, not
-   abandoned.
+   from-scratch native Julia engine remains a real, planned track,
+   deliberately sequenced behind a working wrapper, not abandoned.
 1. **A genuine superset of R's `seas()` and Python's
    `x13_arima_analysis()`, not just a naming exercise.** R exposes the
    entire X-13 spec grammar dynamically via `...`; Python exposes only
@@ -66,16 +61,8 @@ in the repository root for the full staged roadmap, including Part 2
    a directory of output tables the caller has to go find and parse
    themselves.
 4. **Verified against the real binary directly, not a third-party
-   reimplementation.** Since R's and Python's own wrapper packages call
-   the identical binary this package wraps, "matches R" and "matches
-   Python" both reduce to "matches `x13prebuilt`'s own real output" —
-   there is no independent second computation to cross-check against
-   for Part 1. Every stage's committed verification fixtures
-   (`handoff/verification/`) are real, generated output from actually
-   running the pinned binary, reused as regression fixtures rather than
-   hand-written.
-
-Full detail on all of these — including which findings were confirmed
-directly against the binary during development, and exactly how each
-platform (Linux/Windows/macOS) was verified — lives in the repository
-README and `development-sequence.md`.
+   reimplementation.** There is no independent second computation to
+   cross-check against here — matching correctly means matching
+   `x13prebuilt`'s own real output, so every committed verification
+   fixture is real, generated output from actually running the pinned
+   binary, reused as a regression fixture rather than hand-written.

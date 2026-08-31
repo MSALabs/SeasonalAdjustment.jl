@@ -128,8 +128,8 @@ directory first, see `_prepare_run_dir`) and returns a typed
 
 `udg=true` passes the `-S` command-line flag, which is what actually
 produces the `.udg` diagnostics file -- confirmed directly by testing
-every documented `x13ashtml` flag individually (`handoff/w4-addendum-
-udg-residuals-static.md`): `.udg` is NOT controlled by anything in the
+every documented `x13ashtml` flag individually: `.udg` is NOT controlled
+by anything in the
 spec file itself (`X13Spec`/`render`), only by this flag on the
 invocation. Parse the result with [`parse_udg`](@ref).
 """
@@ -151,13 +151,12 @@ started up front and joined with `@sync` -- the already-fast (~10ms)
 subprocesses genuinely overlap at the OS level, since Julia yields the
 current task while `_run_capture` is waiting on its subprocess's pipe,
 with no Julia-side worker-process layer. This is DELIBERATELY NOT a
-worker-pool design: handoff/w3-run-parse.md found that pattern (each
+worker-pool design: that pattern (each
 worker itself spawning a subprocess -- Python's `ProcessPoolExecutor`)
 made things slower, since the coordination overhead exceeded the ~10ms
 of actual work being parallelized. The direct async-task approach here
 was benchmarked for real (not just reasoned structurally) against the
-real binary -- see development-sequence.md's W.3 row for the exact
-numbers. See `_run_capture`'s own comment for why output capture uses a
+real binary. See `_run_capture`'s own comment for why output capture uses a
 merged `Pipe` read directly by the calling task, not an `IOBuffer`
 redirect target -- that form raced under concurrent use even with each
 task given its own private buffer.

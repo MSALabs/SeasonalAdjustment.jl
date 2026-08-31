@@ -68,8 +68,8 @@ end
 Convenience wrapper around [`parse_table`](@ref) for several tables at
 once, resolving each symbol in `tables` (e.g. `:d10`, `:s11`) against
 `result.dir`/`result.basename` (see [`run_x13`](@ref)). Deliberately
-takes the whole `X13RunResult` rather than a bare basename string (as
-first sketched in handoff/w3-run-parse.md) -- `run_x13` runs in a fresh
+takes the whole `X13RunResult` rather than a bare basename string --
+`run_x13` runs in a fresh
 scratch directory per call, not the caller's current working directory,
 so resolving output paths needs `result.dir` too; taking the result
 directly avoids the caller having to track and re-pass it by hand.
@@ -95,8 +95,8 @@ end
     parse_udg(path) -> Dict{String,String}
 
 Parses a `.udg` file -- "user diagnostics", `key: value` pairs one per
-line, colon-separated. Confirmed directly against a real fixture
-(`handoff/udg_and_residuals/auto_test.udg`, 376 lines): every line has
+line, colon-separated. Confirmed directly against a real 376-line
+fixture: every line has
 exactly one colon, no duplicate keys, so a plain `Dict` loses nothing.
 Values are left as raw strings (not parsed into numbers/tuples) -- the
 `.udg` file mixes plain numbers, coefficient/se/t-stat triples, and free

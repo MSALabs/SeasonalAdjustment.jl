@@ -25,10 +25,9 @@ box (`run_result` carries the binary's real stdout/warnings even on
 success).
 
 Deliberately a plain `struct`: checked directly against TSAnalytics.jl's
-actual source (see handoff/w4-api.md) that `ClassicalDecomposition` and
-`STLDecomposition` share no common abstract type to subtype -- the
-open question CLAUDE.md flagged at project scaffolding, resolved here,
-not re-deferred.
+actual source that `ClassicalDecomposition` and `STLDecomposition` share
+no common abstract type to subtype -- the open question CLAUDE.md
+flagged at project scaffolding, resolved here, not re-deferred.
 """
 struct X13Result
     observed::Vector{Float64}
@@ -57,7 +56,7 @@ parameter names (Python-style curated ergonomics); anything else --
 `X13Spec` unchanged (R-style full passthrough). Together this is the
 concrete "genuine superset of R's `seas()` and Python's
 `x13_arima_analysis()`" signature CLAUDE.md requires, not just a naming
-exercise -- see handoff/w4-api.md section "The API design requirement."
+exercise.
 
 `y` accepts anything `tsvalues` does. `index` (defaulting to
 `tsindex(y)`, which is `nothing` for a plain vector and most sliced
@@ -78,17 +77,17 @@ Throws `ArgumentError` immediately if the spec is invalid (see
 an `ErrorException` carrying the binary's own error text if the run
 itself fails, rather than returning a half-populated result.
 
-`save` is deliberately not accepted here (see handoff/w4-api.md) --
+`save` is deliberately not accepted here --
 `x13`'s contract is a fully-populated `X13Result`, which needs all four
 tables; use [`X13Spec`](@ref)/[`run_x13`](@ref)/[`parse_output`](@ref)
 directly for a custom, partial table selection. `residuals` is rejected
 the same way and for the same reason -- `x13()` always requests it (see
 [`X13Result`](@ref)). For a non-SEATS spec, `:d8` (final unmodified SI
-ratios) is ALSO always saved alongside D10-D13 (W.6) -- not one of
+ratios) is ALSO always saved alongside D10-D13 -- not one of
 `X13Result`'s own fields, but present on disk so [`monthplot`](@ref)'s
 SI-ratio overlay never needs to re-run for an `x13()`-produced result.
 
-**(W.7.3)** `missing_action=:x13` needs an explicit `transform`
+`missing_action=:x13` needs an explicit `transform`
 (`:log`/`:none`/`:auto`) the SAME way any other regression content does
 (see [`validate!`](@ref)'s own rule 5) -- confirmed directly: X-13
 interpolates the `-99999` sentinel via its OWN internal AO-style
@@ -170,7 +169,7 @@ end
     _run_spec(spec::X13Spec; label="x13()") -> X13Result
 
 The shared "write, run, parse into X13Result" tail behind both [`x13`](@ref)
-and [`update`](@ref) (W.7.6) -- factored out so `update` doesn't need its
+and [`update`](@ref) -- factored out so `update` doesn't need its
 own second copy of this logic; the only difference between the two
 callers is which `X13Spec` they hand in (a freshly built one vs.
 `X13Spec(r.spec; kwargs...)`) and the error message's own label.
@@ -283,9 +282,8 @@ Resolves an "automatic" spec's `:auto`/`automdl`/`outlier` choices into
 an explicit, reproducible [`X13Spec`](@ref) -- matching R's `seasonal`
 package's own `static()`. Reads exclusively from `result.udg`, never
 stdout/HTML. Resolves three things, each confirmed directly against the
-real binary this session (`handoff/w4-addendum-udg-residuals-static.md`
-plus this session's own follow-up verification, which corrected one gap
-in that handoff -- see point 3):
+real binary (see point 3 for a real gap found and closed during
+verification):
 
 1. **ARIMA order**: `.udg`'s `arimamdl` field (e.g. `"(0 1 1)(0 1 1)"`)
    is the model actually used, whether from `automdl` or already
@@ -299,10 +297,10 @@ in that handoff -- see point 3):
    (`AO1951.5`, `AO1951.05`), so no month-name-to-number conversion is
    needed. Appended to `regression_variables`; `outlier` (automatic
    detection) is turned off, since these are now pinned explicitly.
-3. **Transform** (`transform=:auto`): the original handoff found no
-   clean `.udg` field for this and planned to regex the HTML output for
-   `"prefers <strong>log transformation</strong>"` -- a real gap, but
-   not the one this session found. Direct testing here found `.udg`
+3. **Transform** (`transform=:auto`): regexing the HTML output for
+   `"prefers <strong>log transformation</strong>"` was the fallback
+   plan when no clean `.udg` field seemed available for this. Direct
+   testing found `.udg`
    DOES resolve this cleanly, just inconsistently between outcomes: when
    log wins, a separate `aictrans: Log(y)` field appears (the top-level
    `transform` field itself stays a generic `"Automatic selection"`);
@@ -370,7 +368,7 @@ The raw `.udg` dict (`r.udg` -- this first form is just a named
 accessor for the existing field, for symmetry with the other two forms
 and with R's `seasonal::udg(x, stats=NULL)`). The second form looks up
 one key, `nothing` if absent -- never throws (mirrors this file's other
-W.5 accessors, not R's own `fail=` argument, which has no Julia
+diagnostics accessors, not R's own `fail=` argument, which has no Julia
 analogue needed here). The third form returns the subset of `r.udg`
 matching `keys`, silently omitting any key not present.
 """
@@ -403,8 +401,8 @@ Re-reads the `.udg` file at `path` DIRECTLY (not via `parse_udg`'s
 this matters: `Dict` iteration order isn't a language guarantee, and
 `coef`/`coefnames`/`stderror` need a stable, meaningful order (the order
 X-13 itself estimated the coefficients in), not whatever order a `Dict`
-happens to iterate in. A coefficient line is identified as the handoff
-specifies -- a key containing `\$` whose value splits into exactly three
+happens to iterate in. A coefficient line is identified as
+a key containing `\$` whose value splits into exactly three
 parseable floats (`estimate std-error t-statistic`) -- MINUS a real,
 confirmed exception: `lbq\$NN`/`bpq\$NN`/`sigacf\$NN`/`sigpacf\$NN` (the
 lag-indexed diagnostic families `residual_diagnostics` already parses)
@@ -412,10 +410,10 @@ ALSO have a `\$` in their key and a 3-float value, and are explicitly
 excluded (see `_NON_COEFFICIENT_DOLLAR_PREFIXES`) -- a first version of
 this function without that exclusion matched 14 lines against the real
 fixture, not the true `nreg + nregderived + nmodel` = 3 + 1 + 2 = 6, a
-bug caught only by actually running the real-fixture test, not by
-inspecting the handoff's own single worked example.
+bug caught only by actually running the real-fixture test against a
+single worked example.
 
-**(W.7 follow-up)** A second, distinct exception found the same way,
+A second, distinct exception found the same way,
 against a `trading=true` regression run: `chi\$<group name>` (e.g.
 `"chi\$Trading Day"`) is the joint significance CHI-SQUARED TEST for a
 whole regressor group, not a coefficient -- it ALSO has a `\$` in its
@@ -458,8 +456,8 @@ end
 Reduces one raw `.udg` coefficient key to the shorter name
 `coefnames`/`show` display, in three genuinely different cases
 (confirmed directly against the fixture's own four distinct key shapes
--- a single "strip an N-Coefficient prefix" rule, as first sketched in
-the handoff, does NOT cover all of them):
+-- a single "strip an N-Coefficient prefix" rule does NOT cover all of
+them):
 
 1. `"1-Coefficient Trading Day\$Weekday"` -- strips the leading
    `"<digit>-Coefficient "` prefix -> `"Trading Day\$Weekday"`.
@@ -520,8 +518,7 @@ StatsAPI.stderror(r::X13Result) = [c.stderror for c in _coefficient_lines(_udg_p
 `nreg=3, nmodel=2 -> dof=5` in the committed fixture, confirmed directly.
 Not independently cross-checked against R's own `dof(seas_object)`
 semantics; treat this definition as this package's own, not an assumed
-R-identical one, until that comparison is actually run (see
-handoff/w5-diagnostics-api-handoff.md section 7.6).
+R-identical one, until that comparison is actually run.
 """
 StatsAPI.dof(r::X13Result) = something(_udg_int(r.udg, "nreg"), 0) + something(_udg_int(r.udg, "nmodel"), 0)
 
@@ -577,9 +574,9 @@ const _SPECTRUM_FORMAT_TABLES = Set([:sp0, :sp1, :sp2, :spr])
     _ensure_saved(r::X13Result, tables; reeval=true, label="series()") -> (X13RunResult, Int)
 
 The shared re-run machinery behind both [`series`](@ref) and
-[`_spectrum_series`](@ref) (W.7.1 folds the latter into the former's own
+[`_spectrum_series`](@ref) (the latter folds into the former's own
 save-extension path rather than keeping two separate re-run
-implementations, per the W.7.1 handoff). Returns `r.run_result` /
+implementations). Returns `r.run_result` /
 `r.spec.period` unchanged if every table in `tables` was already saved by
 the original run; otherwise re-runs once with `save` extended to the
 union of the existing tables and `tables`.
@@ -606,7 +603,7 @@ function series(r::X13Result, tables::AbstractVector{Symbol}; reeval::Bool = tru
     unknown = filter(t -> !(t in _KNOWN_TABLES), tables)
     isempty(unknown) || throw(ArgumentError(
         "series: unrecognized table symbol(s) $unknown -- known tables are the " *
-        "$(length(_KNOWN_TABLES))-entry catalogue in handoff/x13-saveable-tables.md",
+        "$(length(_KNOWN_TABLES))-entry X-13 saveable-table catalogue",
     ))
 
     result, period = _ensure_saved(r, tables; reeval = reeval, label = "series()")
@@ -722,14 +719,14 @@ end
     _spectrum_series(r::X13Result, series::Symbol) -> Vector{NamedTuple}
 
 `(freq=, value=)` pairs -- the actual spectrum curve `spectrumplot`
-(W.6) draws, for `series` in `(:original, :sa, :irregular, :residual)`
+ draws, for `series` in `(:original, :sa, :irregular, :residual)`
 (mapping to the real, confirmed table codes `sp0`/`sp1`/`sp2`/`spr`).
 
-**(W.7.1)** Shares [`_ensure_saved`](@ref)'s re-run machinery with
+Shares [`_ensure_saved`](@ref)'s re-run machinery with
 [`series`](@ref) rather than a second, bespoke re-run implementation --
 the two used to diverge (this function extended `spectrum.save` via
 `spec_args` directly; `series()` extended the typed `save` field), which
-is exactly the "two mechanisms for one job" the W.7.1 handoff flagged.
+was exactly the "two mechanisms for one job" this consolidation fixes.
 Now both funnel through the same `X13Spec(r.spec; save=...)` path, with
 `render()`'s own per-block routing (spec.jl) sending `:sp0`/`:sp1`/`:sp2`/
 `:spr` to the `spectrum{}` block automatically. Still requests all four
@@ -810,7 +807,7 @@ end
 
 Point forecasts plus their `level`-width prediction interval, extending
 `r.dates` forward -- `.fct` (`forecast.forecasts`) already carries all
-three on the original scale (confirmed directly, W.7 handoff), so
+three on the original scale (confirmed directly), so
 nothing needs back-transforming here. Re-runs (via [`X13Spec`](@ref)'s
 `forecast.probability`) whenever `:fct` wasn't already saved OR the
 requested `level` differs from whatever probability the original run
@@ -892,7 +889,7 @@ The estimated TIME PATH of each regression effect (`which=:all` ->
 returns just that vector, or `nothing`). Given the India-calendar layer,
 `which=:holiday`/`:user` are the point of this: `coef(r)` gives the
 Diwali coefficient itself, `components(r; which=:user)` gives its
-month-by-month factor -- closing the loop W.8.4's `componentplot` draws.
+month-by-month factor -- closing the loop `componentplot` draws.
 
 Fetched via [`series`](@ref)'s own re-run machinery (`_ensure_saved`),
 so results are announced with the same `@info` convention. `which=:all`
@@ -981,19 +978,19 @@ end
 """
     StatsAPI.vcov(r::X13Result) -> Matrix{Float64}
 
-**(W.7.5)** Sized `length(coef(r)) x length(coef(r))`, aligned to
-[`StatsAPI.coefnames`](@ref)'s own order. The regression-coefficient
+Sized `length(coef(r)) x length(coef(r))`, aligned to
+`StatsAPI.coefnames`'s own order. The regression-coefficient
 block comes from `.rcm`, the ARIMA/ARMA-coefficient block from `.acm`
 (re-run via `save` if not already present, same convention as
 [`series`](@ref)); cross-covariance between the two families is `NaN`
 (genuinely not reported by X-13, not assumed zero). Throws
 `ErrorException` if the model has no coefficients at all (nothing to
-return -- W.5's original, still-correct reasoning for the pure-`.udg`
+return -- the same reasoning that applies to the pure-`.udg`
 case).
 
 **Verified, not assumed**: `.rcm`/`.acm`'s row order is checked against
 `.udg`'s own coefficient count before use (`sqrt.(diag(V))` should
-reproduce [`StatsAPI.stderror`](@ref) -- asserted directly in this
+reproduce `StatsAPI.stderror` -- asserted directly in this
 package's own test suite, not just hoped for).
 
 **A real, honest scope limitation, found directly**: a `trading=true`
@@ -1066,7 +1063,7 @@ since `StatsBase` already defines and exports one). **p-values are
 deliberately NOT included**: computing one needs a t-distribution CDF,
 which would mean either a new dependency (`Distributions.jl`, for one
 column) or leaning on TSAnalytics.jl exposing one, neither confirmed
-worth it yet -- the same open question W.8's own handoff raises for a
+worth it yet -- the same open question applies to a possible future
 Q-Q plot panel. Flagged here rather than silently guessed at.
 """
 function StatsBase.coeftable(r::X13Result)
@@ -1158,8 +1155,8 @@ end
 
 Composes [`arima_model`](@ref)/[`transformfunction`](@ref)/
 [`mstats`](@ref)/[`qs`](@ref)/[`outlier_counts`](@ref)/`StatsBase.coeftable`
-into one report -- no new capability, matching the W.7.6 handoff's own
-framing exactly. **Not exported** (confirmed directly: `Base` already
+into one report -- no new capability, just a single convenient bundle.
+**Not exported** (confirmed directly: `Base` already
 has its own `summary`, a different one-line-descriptive-string contract
 -- `using SeasonalAdjustment` would collide with it) -- call this
 fully-qualified, `SeasonalAdjustment.summary(r)`.
@@ -1194,7 +1191,7 @@ end
 """
     update(r::X13Result; kwargs...) -> X13Result
 
-`X13Spec(r.spec; kwargs...)` then re-runs (via the same [`_run_spec`](@ref)
+`X13Spec(r.spec; kwargs...)` then re-runs (via the same `_run_spec`
 tail [`x13`](@ref) itself uses) -- R's `seasonal::update.seas`. `r`
 itself is untouched (`X13Result`/`X13Spec` are both immutable).
 """
@@ -1258,8 +1255,8 @@ end
 `nothing` if `history{}` wasn't requested (`udg(r, "history") !=
 "yes"`); otherwise `(sa_estimates=, raw=)` -- `sa_estimates` collects
 every `r0N.lag00.aar.*` (average absolute revision) value found (the
-concurrent-vs-most-recent seasonally adjusted revision history, W.7.8's
-own primary target), `raw` every `r0*`/`revspan` key verbatim.
+concurrent-vs-most-recent seasonally adjusted revision history), `raw`
+every `r0*`/`revspan` key verbatim.
 """
 function revision_history(r::X13Result)
     udg(r, "history") == "yes" || return nothing
@@ -1419,13 +1416,12 @@ keyword arguments.
 produces. Known blocks (`series`, `transform`, `regression`, `arima`,
 `automdl`, `outlier`, `estimate`, `x11`, `seats`) map to `X13Spec`'s
 typed fields; anything else becomes a [`spec_args`](@ref X13Spec) entry
-(W.5.4) under `"blockname.key"`. Not a general X-13 grammar parser --
+ under `"blockname.key"`. Not a general X-13 grammar parser --
 comments and unusual multi-line quoting are not handled.
 
 **One confirmed, real information gap**: `outlier { types = (ao ls tc) }`
 sets `outlier=true` but the specific `types=` list is DROPPED, not
-preserved -- `X13Spec` has no typed field for outlier types yet (see
-handoff/seasonaladjustment-w5-w10-pipeline-handoff.md §3), and
+preserved -- `X13Spec` has no typed field for outlier types yet, and
 `spec_args` can't target `outlier` since it's already a typed-field
 block (see [`validate!`](@ref)). Silently losing this would be worse
 than documenting it: check the source `.spc` by hand if `outlier.types`
