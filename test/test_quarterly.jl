@@ -60,11 +60,11 @@ end
     y = collect(1.0:40.0)   # quarterly, 40 quarters
     for extra in 0:3
         short = zeros(40 + extra)   # needs 40+4=44
-        @test_throws ArgumentError X13Spec(y; period = 4, regression_user = short, regression_usertype = :holiday)
+        @test_throws ArgumentError X13Spec(y; period = 4, regression_user = short, regression_usertype = :holiday, transform = :none)
     end
     for extra in 4:6
         ok = zeros(40 + extra)
-        @test X13Spec(y; period = 4, regression_user = ok, regression_usertype = :holiday) isa X13Spec
+        @test X13Spec(y; period = 4, regression_user = ok, regression_usertype = :holiday, transform = :none) isa X13Spec
     end
 end
 

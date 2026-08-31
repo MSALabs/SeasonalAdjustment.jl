@@ -176,7 +176,11 @@ end
     @test ses[i]   ≈ 0.0204386646810968
     @test names == StatsAPI.coefnames(_result_from_fixture())   # file-order, reproducible
 
-    @test_throws ErrorException StatsAPI.vcov(r)
+    # StatsAPI.vcov(r) is NOT tested here (W.5 -> W.7.5): _result_from_fixture()'s
+    # `.spec` is a plain placeholder with none of the real regression content
+    # that produced these coefficients (trading/easter/AO), so a real vcov()
+    # call would re-run against the WRONG spec -- see test_w7.jl's own
+    # real-binary vcov tests, built from a matching x13() run instead.
 end
 
 @testset "_coefficient_name -- the three real cases, not one blanket rule" begin

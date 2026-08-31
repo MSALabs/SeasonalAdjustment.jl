@@ -24,7 +24,7 @@ end
     short_regressor = zeros(48)  # matches series length exactly, not 48+12=60
     @test_throws ArgumentError X13Spec(y; regression_user = short_regressor, regression_usertype = :holiday)
     ok_regressor = zeros(60)
-    @test X13Spec(y; regression_user = ok_regressor, regression_usertype = :holiday) isa X13Spec
+    @test X13Spec(y; regression_user = ok_regressor, regression_usertype = :holiday, transform = :none) isa X13Spec
 
     # check 3: regARIMA (a regression block present, via exog) + multiplicative without transform=:log
     @test_throws ArgumentError X13Spec(y; exog = x, x11_mode = :multiplicative, transform = nothing)

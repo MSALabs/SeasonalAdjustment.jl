@@ -17,7 +17,11 @@ include("artifacts.jl")    # W.1 -- binary artifact resolution
 include("calendars.jl")    # W.0 -- India + major-market holiday calendars,
                             #        trading-day / Easter / custom holiday
                             #        regressor generation
-include("spec.jl")         # W.2 -- .spc spec-file generation
+include("known_tables.jl") # W.7.1 -- generated catalogue of all X-13 `save`
+                            #          table keywords + the spec block each
+                            #          belongs to (tools/generate_known_tables.jl)
+include("spec.jl")         # W.2 -- .spc spec-file generation; W.7.1 -- save
+                            #        routed per-table to its real spec block
 include("run.jl")          # W.3 -- subprocess invocation
 include("parse.jl")        # W.3 -- output-table parsing
 include("diagnostics.jl")  # W.5 -- typed .udg accessor layer (Dict-based;
@@ -61,6 +65,22 @@ export udg, transformfunction, arima_model, mstats, qs, outliers,
     outlier_counts, fivebestmdl, seasonality_tests, residual_diagnostics,
     spectral_peaks, filters, nobs_effective, spectrum_peaks
 export series, select_order, open_output, import_spc
+
+# W.7 -- forecasts/backcasts, missing values, component-factor accessors,
+# vcov/coeftable/summary/update, sliding spans/revision history. `coeftable`
+# itself is NOT exported here (it extends StatsBase.coeftable, used
+# fully-qualified, same convention as the StatsAPI functions above); `vcov`
+# is likewise reached via `StatsAPI.vcov`, already exported by W.5.
+# `summary` is ALSO deliberately not exported here -- confirmed directly
+# this session that Base already exports its own `summary` (a one-line
+# descriptive-string generic, different contract from this file's own
+# `summary(r) -> X13Summary`), so `using SeasonalAdjustment` alongside
+# Base's own implicit `summary` binding is a genuine, deterministic name
+# collision, not a hypothetical one -- reach this one as
+# `SeasonalAdjustment.summary(r)`, same fully-qualified convention as
+# `coeftable`/`vcov` above.
+export forecast, backcast, interpolated, components, update,
+    slidingspans, revision_history, X13Summary
 
 # W.6 -- plot recipes. `plot`/`plot!` themselves are NOT exported (or
 # even defined) here -- they belong to whatever plotting backend the

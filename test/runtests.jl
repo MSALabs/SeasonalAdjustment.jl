@@ -9,6 +9,10 @@ import Dates
 using BusinessDays
 using Random
 import StatsAPI
+import StatsBase   # W.7: StatsBase.coeftable(r) is used fully-qualified,
+                    # matching src/api.jl's own convention (see that
+                    # file's own comment on why coeftable/vcov/summary
+                    # aren't re-exported under their bare names)
 
 # Each stage's own test file gets included here as it's implemented.
 # See development-sequence.md for the task sequence -- one @testset
@@ -25,6 +29,10 @@ import StatsAPI
     include("test_diagnostics.jl") # W.5 -- diagnostics API and seasonal-parity functions
     include("test_plots.jl")       # W.6 -- RecipesBase.jl plot recipes
     include("test_quarterly.jl")   # quarterly interval support
+    include("test_known_tables.jl") # W.7.1 -- full save-table catalogue + per-block routing
+    include("test_w7.jl")          # W.7.2-W.7.8 -- forecast, missing values, components,
+                                    #                vcov, summary/update, force/seasonalma,
+                                    #                slidingspans/history
 
     # Extended suite (R/Python-cross-validated extreme cases) -- opt-in
     # only, see test/extended/runtests.jl's own module comment. Kept out

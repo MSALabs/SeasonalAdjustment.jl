@@ -39,9 +39,14 @@ struct X13Spec
     exog::Union{Nothing,Vector{Float64}}              # a generic companion regressor (also triggers a regression block)
     aictest::Vector{Symbol}                            # e.g. [:td, :easter]
     residuals::Bool                                     # estimate { save = (rsd) } -- regARIMA residuals, W.4 addendum
+    maxlead::Union{Nothing,Int}                         # W.7.2: forecast { maxlead = ... }; X-13 default is 12 when unset
+    force::Union{Nothing,Symbol}                        # W.7.7: force { type = ... } -- :none, :denton, or :regress
+    force_target::Symbol                                # W.7.7: force { target = ... } -- confirmed values only (see _FORCE_TARGET_KEYWORDS)
+    seasonalma::Union{Nothing,Symbol,AbstractVector{Symbol}} # W.7.7: x11 { seasonalma = ... } -- one filter for all periods, or one per period
     spec_args::Dict{String,String}                      # W.5.4: raw "block.setting"=>"value" passthrough for any
-                                                          # spec block with no typed field (forecast, slidingspans,
-                                                          # history, check, pickmdl, force, ...); see render/validate!
+                                                          # spec block with no typed field (slidingspans, history,
+                                                          # check, pickmdl, forecast's other settings, ...); see
+                                                          # render/validate!
 end
 
 """
@@ -51,6 +56,7 @@ end
             save=nothing, trading=false, regression_variables=String[],
             regression_user=nothing, regression_usertype=nothing, regression_user_name=:user1,
             exog=nothing, aictest=Symbol[], residuals=false,
+            maxlead=nothing, force=nothing, force_target=:original, seasonalma=nothing,
             spec_args=Dict{String,String}()) -> X13Spec
 
     X13Spec(base::X13Spec; kwargs...) -> X13Spec
@@ -114,6 +120,23 @@ already requires `regression_user` to cover the series plus one forecast
 horizon -- so this package genuinely CAN extend and forecast properly,
 and changing nothing by default preserves that. Callers wanting R/Python
 parity write `spec_args = Dict("forecast.maxlead" => "0")` explicitly.
+
+**(W.7.2)** `maxlead` is a typed field (rather than only reachable via
+`spec_args`) specifically so [`validate!`](@ref) can enforce X-13's own
+`pfcst=120` program limit before any subprocess is spawned. `maxback`
+(the backcast horizon) has no equivalent typed field -- reach it via
+`spec_args["forecast.maxback"]` -- since nothing needs to validate it
+independently of `maxlead`'s own limit.
+
+**(W.7.7)** `force`/`force_target` (forcing seasonally adjusted annual
+totals to match the original series -- `force.type`/`force.target`) and
+`seasonalma` (the seasonal moving-average filter choice --
+`x11.seasonalma`) are typed fields with every accepted keyword
+CONFIRMED directly against the real binary (not transcribed from the
+Reference Manual alone) -- see `_FORCE_TYPE_KEYWORDS`/
+`_FORCE_TARGET_KEYWORDS`/`_SEASONALMA_KEYWORDS`. `force_target`'s real
+spelling is `:calendaradj`, not `:caladjust` as an earlier draft of the
+W.7 handoff guessed -- the binary's own error message settled it.
 """
 function X13Spec(
     y::AbstractVector{<:Real};
@@ -139,6 +162,10 @@ function X13Spec(
     exog::Union{Nothing,AbstractVector{<:Real}} = nothing,
     aictest::AbstractVector{Symbol} = Symbol[],
     residuals::Bool = false,
+    maxlead::Union{Nothing,Int} = nothing,
+    force::Union{Nothing,Symbol} = nothing,
+    force_target::Symbol = :original,
+    seasonalma::Union{Nothing,Symbol,AbstractVector{Symbol}} = nothing,
     spec_args::AbstractDict{<:AbstractString,<:AbstractString} = Dict{String,String}(),
 )
     spec = X13Spec(
@@ -165,6 +192,10 @@ function X13Spec(
         exog === nothing ? nothing : Float64.(collect(exog)),
         collect(aictest),
         residuals,
+        maxlead,
+        force,
+        force_target,
+        seasonalma isa AbstractVector ? collect(seasonalma) : seasonalma,
         Dict{String,String}(spec_args),
     )
     validate!(spec)
@@ -203,7 +234,12 @@ preventing -- fast, native, BEFORE any subprocess round-trip:
    RegARIMA forecast horizon (1 year = `period` observations), not just
    the historical length.
 5. `transform = :log` is required whenever a regression block is
-   combined with `x11_mode` in `(:multiplicative, :logadditive)`.
+   combined with `x11_mode` in `(:multiplicative, :logadditive)` --
+   **or `x11_mode === nothing`**, since X-13's own implicit default mode
+   IS multiplicative (confirmed directly: a plain `trading=true` spec
+   with no explicit `x11_mode` hits the real binary's own log-transform
+   error, the same as setting `x11_mode=:multiplicative` by hand would).
+   Only `:additive`/`:pseudoadditive` are exempt.
 6. `spec_args` (W.5.4) can't name a block (`transform`, `x11`, `automdl`,
    `regression`, `estimate`, `series`, `arima`, `seats`, `outlier`) this
    struct already renders via a typed field -- two sources of truth for
@@ -213,6 +249,20 @@ preventing -- fast, native, BEFORE any subprocess round-trip:
    empty block (`"slidingspans" => ""` -> `slidingspans { }`); a
    non-empty value on a dotless key has no defined shape and is rejected
    rather than guessed at.
+7. **(W.7.1)** Every symbol in `save` must be a real X-13 save keyword --
+   checked against `_KNOWN_TABLES` (generated from the full 281-entry
+   catalogue in `handoff/x13-saveable-tables.md`, see
+   `tools/generate_known_tables.jl`). `print`-only keywords (`none`,
+   `all`, `alltables`, `default`, `brief` -- valid for `print`, invalid
+   for `save`, confirmed directly, Manual §3.2) get their own, more
+   specific error rather than falling into the generic "not a recognized
+   table" message. This closes a real gap: before W.7.1, an unrecognized
+   or print-only symbol in `save` was accepted silently here and either
+   produced a confusing binary-side error (the old code rendered
+   `save=` verbatim into `x11{}`/`seats{}` regardless of which block the
+   table actually belonged to) or, under W.7.1's own per-block routing,
+   would have been silently dropped instead -- worse. Reject it up
+   front, the same fast-fail convention every other rule here uses.
 """
 function validate!(spec::X13Spec)
     spec.x11_mode === nothing || haskey(_X11_MODE_KEYWORDS, spec.x11_mode) || throw(ArgumentError(
@@ -251,6 +301,49 @@ function validate!(spec::X13Spec)
         "seasonally adjusted must have at least 3 complete years of data.\"",
     ))
 
+    # W.7.2: forecast/backcast program limits (Reference Manual Table 2.2,
+    # confirmed directly: pfcst=120 caps maxlead/maxback, pobs=780 caps
+    # series length). pureg=52 (max user regressors) and pb=80 (max total
+    # regression variables, including auto-detected outliers) are NOT
+    # enforced here -- this package supports exactly one named user
+    # regressor at a time (structurally impossible to exceed 52) and pb's
+    # true count isn't knowable before a run (automdl-detected outliers
+    # aren't known until the binary finds them), so a pre-run check would
+    # either be vacuous or wrong; left to the binary's own error.
+    spec.maxlead === nothing || spec.maxlead >= 0 || throw(ArgumentError(
+        "maxlead=$(spec.maxlead) must be >= 0",
+    ))
+    spec.maxlead === nothing || spec.maxlead <= 120 || throw(ArgumentError(
+        "maxlead=$(spec.maxlead) exceeds X-13's own program limit pfcst=120 (Reference " *
+        "Manual Table 2.2) -- forecasts are capped at 120 periods",
+    ))
+    n > 780 && throw(ArgumentError(
+        "series has $n observations, exceeding X-13's own program limit pobs=780 " *
+        "(Reference Manual Table 2.2)",
+    ))
+
+    spec.force === nothing || haskey(_FORCE_TYPE_KEYWORDS, spec.force) || throw(ArgumentError(
+        "force=:$(spec.force) isn't recognized -- must be one of " *
+        "$(join(sort(string.(keys(_FORCE_TYPE_KEYWORDS))), ", ")), or `nothing`, confirmed " *
+        "directly against the real binary",
+    ))
+    haskey(_FORCE_TARGET_KEYWORDS, spec.force_target) || throw(ArgumentError(
+        "force_target=:$(spec.force_target) isn't recognized -- confirmed directly against " *
+        "the real binary's own error, the only accepted values are " *
+        "$(join(sort(string.(keys(_FORCE_TARGET_KEYWORDS))), ", "))",
+    ))
+
+    if spec.seasonalma !== nothing
+        sma_list = spec.seasonalma isa Symbol ? [spec.seasonalma] : spec.seasonalma
+        for f in sma_list
+            haskey(_SEASONALMA_KEYWORDS, f) || throw(ArgumentError(
+                "seasonalma=:$f isn't recognized -- confirmed directly against the real " *
+                "binary, the only accepted values are " *
+                "$(join(sort(string.(keys(_SEASONALMA_KEYWORDS))), ", "))",
+            ))
+        end
+    end
+
     if spec.regression_user !== nothing
         min_len = n + spec.period
         length(spec.regression_user) >= min_len || throw(ArgumentError(
@@ -262,13 +355,31 @@ function validate!(spec::X13Spec)
         ))
     end
 
-    if _has_regression(spec) && !spec.seats && spec.x11_mode in (:multiplicative, :logadditive)
-        spec.transform === :log || throw(ArgumentError(
+    # (W.7 follow-up) The real, more precise rule, confirmed directly
+    # against the binary across FOUR combinations (not assumed from one
+    # worked example): the failure is triggered by a MISSING transform
+    # block (`transform === nothing`, so no `transform { ... }` at all),
+    # not specifically by "not :log". `transform = :none` -- an EXPLICIT
+    # no-op transform -- runs successfully in the exact same
+    # `trading=true`, x11_mode-unset combination that fails with no
+    # transform block at all; so does the original :log finding. X-13's
+    # own IMPLICIT default x11 mode (when x11_mode is left `nothing`) is
+    # multiplicative -- confirmed separately -- which is why this also
+    # fires for an unset x11_mode, not just an explicit multiplicative/
+    # logadditive one (the ORIGINAL, narrower version of this rule
+    # missed that far more common case). `transform = :auto` was not
+    # independently tested here; treated as "explicit enough" by analogy
+    # with :none/:log rather than assumed to fail.
+    if _has_regression(spec) && !spec.seats && spec.x11_mode ∉ (:additive, :pseudoadditive)
+        spec.transform === nothing && throw(ArgumentError(
             "combining a RegARIMA model (a regression block is present) with " *
-            "x11_mode=:$(spec.x11_mode) requires transform=:log -- confirmed directly " *
-            "against the real binary's own error: \"Multiplicative or log additive " *
-            "seasonal adjustment cannot be performed when preadjustment factors are " *
-            "derived from a regARIMA model for data which have not been log transformed.\"",
+            "x11_mode=$(spec.x11_mode === nothing ? "the default (multiplicative)" : ":$(spec.x11_mode)") " *
+            "requires an EXPLICIT transform (:log, :none, or :auto -- :none and :log both " *
+            "confirmed directly; a completely absent transform block is what actually " *
+            "fails) -- confirmed directly against the real binary's own error: " *
+            "\"Multiplicative or log additive seasonal adjustment cannot be performed when " *
+            "preadjustment factors are derived from a regARIMA model for data which have " *
+            "not been log transformed.\"",
         ))
     end
 
@@ -289,16 +400,58 @@ function validate!(spec::X13Spec)
         ))
     end
 
+    if spec.save !== nothing
+        for s in spec.save
+            s in _PRINT_ONLY_SAVE_KEYWORDS && throw(ArgumentError(
+                "save=[...] contains :$s, which is a print-only keyword -- \"none\"/\"all\"/" *
+                "\"alltables\"/\"default\"/\"brief\" are valid for X-13's `print` argument, " *
+                "never for `save` (confirmed directly, Reference Manual §3.2)",
+            ))
+            s in _KNOWN_TABLES || throw(ArgumentError(
+                "save=[...] contains :$s, which isn't a recognized X-13 save table -- see " *
+                "handoff/x13-saveable-tables.md's catalogue ($(length(_KNOWN_TABLES)) valid " *
+                "entries); the file extension is often NOT the X-11 table number (e.g. " *
+                "holiday factors, table A7, save as :hol, not :a7)",
+            ))
+        end
+    end
+
     return spec
 end
+
+# print-only `print`/`save` keywords -- valid for X-13's `print` argument,
+# invalid for `save` (Reference Manual §3.2, confirmed directly against
+# handoff/x13-saveable-tables.md's own "How save works" section).
+const _PRINT_ONLY_SAVE_KEYWORDS = Set([:none, :all, :alltables, :default, :brief])
 
 # Blocks X13Spec already renders via a dedicated typed field -- a
 # spec_args key targeting one of these throws in validate! above rather
 # than silently creating a second, conflicting source of truth for it.
 const _TYPED_SPEC_BLOCKS = Set([
     "transform", "x11", "automdl", "regression", "estimate", "series",
-    "arima", "seats", "outlier",
+    "arima", "seats", "outlier", "force",
 ])
+
+# W.7.7 -- confirmed directly against the real binary (not transcribed
+# from the Reference Manual table alone, which the handoff flagged as
+# past its fetch limit). force.target's real accepted spelling is
+# "calendaradj", NOT "caladjust" as an earlier draft of the handoff
+# guessed -- the binary's own error message settled it:
+# "Entry for forcetarget argument must be original, calendaradj,
+# permprioradj, or both."
+const _FORCE_TYPE_KEYWORDS = Dict(:none => "none", :denton => "denton", :regress => "regress")
+const _FORCE_TARGET_KEYWORDS = Dict(
+    :original => "original", :calendaradj => "calendaradj",
+    :permprioradj => "permprioradj", :both => "both",
+)
+
+# W.7.7 -- all 8 confirmed directly against the real binary (each run
+# individually via a hand-rendered x11{seasonalma=...} spec); every
+# spelling is identical to its Julia Symbol name, no translation needed.
+const _SEASONALMA_KEYWORDS = Dict(
+    :s3x1 => "s3x1", :s3x3 => "s3x3", :s3x5 => "s3x5", :s3x9 => "s3x9",
+    :s3x15 => "s3x15", :stable => "stable", :x11default => "x11default", :msr => "msr",
+)
 
 # X-13's x11{mode=...} keyword is the SHORT form -- confirmed directly
 # by hitting a real parse error using the full word ("Argument name
@@ -354,6 +507,40 @@ working against the real binary throughout this project's development
 `estimate { save = (rsd) }`, `x11 { ... }` / `seats { ... }`, each block
 only emitted if relevant, followed by any `spec_args` (W.5.4) blocks).
 
+**(W.7.1) `save` is routed per-table to the spec block that actually owns
+it**, not dumped unconditionally into `x11{}`/`seats{}`. Before W.7.1
+this was a real, confirmed bug: `save=[:hol]` (the regression-block
+holiday-factor table) rendered `x11 { save = (hol) }`, which the real
+binary rejects, since `.hol` is a `regression{}` table, not an `x11{}`
+one -- see `handoff/x13-saveable-tables.md`'s own "critical naming trap"
+section and `src/known_tables.jl`'s generated `_TABLE_BLOCK`, which this
+now keys off. Practically: `series(r, :hol)`'s automatic re-run (and any
+hand-built `X13Spec(y; save=[:hol, :rsd, :fct])` mixing tables from
+different blocks) now lands each table in the right block --
+`regression{save=(hol)}`, `estimate{save=(rsd)}`, `forecast{save=(fct)}`
+-- in one render, one run.
+
+Per-block routing rules:
+
+- `series`/`regression`/`estimate`/`outlier`/`x11`/`seats` already have a
+  typed rendering path (`_TYPED_SPEC_BLOCKS`) -- a `save` table destined
+  for one of these is appended to that block's own `save = (...)` line
+  (creating the block, e.g. an otherwise-empty `regression{}` or
+  `estimate{}`, if nothing else would have rendered it). `x11`/`seats`
+  keep their historical default (`d10 d11 d12 d13` / `s10 s11 s12 s13`)
+  whenever `save` is `nothing` OR contains no table from that block, so
+  a `save` request naming only e.g. a regression table doesn't silently
+  turn off the decomposition step itself.
+- Every other block (`forecast`, `check`, `force`, `slidingspans`,
+  `history`, `identify`, `x11regression`, `spectrum`) has no typed field
+  at all -- a `save` table destined for one of these is merged into
+  `spec_args` as a synthetic `"blockname.save"` entry (unioned with any
+  `save` the caller already put there directly via `spec_args`) and
+  rendered through the ordinary `spec_args` path below. `composite`-only
+  tables have no rendering path at all (this package has no multi-series
+  aggregation support) and are silently not renderable, though still
+  valid entries in `_KNOWN_TABLES` for cataloguing purposes.
+
 `spec_args` rendering rules (validated against a block collision at
 `validate!` time, not here -- see [`validate!`](@ref)):
 
@@ -371,7 +558,10 @@ only emitted if relevant, followed by any `spec_args` (W.5.4) blocks).
    across runs.
 """
 function render(spec::X13Spec)
+    save_by_block = _save_by_block(spec)
+
     io = IOBuffer()
+    series_saves = get(save_by_block, "series", Symbol[])
     println(io, "series {")
     println(io, "  title = \"$(spec.title)\"")
     println(io, "  start = $(spec.start[1]).$(spec.start[2])")
@@ -379,11 +569,13 @@ function render(spec::X13Spec)
     print(io, "  data = (")
     _write_wrapped(io, spec.y)
     println(io, ")")
+    !isempty(series_saves) && println(io, "  save = ($(join(sort(string.(series_saves)), " ")))")
     println(io, "}")
 
     spec.transform !== nothing && println(io, "transform { function = $(spec.transform) }")
 
-    if _has_regression(spec)
+    regression_saves = get(save_by_block, "regression", Symbol[])
+    if _has_regression(spec) || !isempty(regression_saves)
         println(io, "regression {")
         # `trading` is Python's own shorthand for adding "td" to the
         # regression variables list; deduplicated against an explicit
@@ -407,6 +599,7 @@ function render(spec::X13Spec)
             _write_wrapped(io, spec.exog)
             println(io, ")")
         end
+        !isempty(regression_saves) && println(io, "  save = ($(join(sort(string.(regression_saves)), " ")))")
         println(io, "}")
     end
 
@@ -424,24 +617,96 @@ function render(spec::X13Spec)
         spec.maxdiff !== nothing && push!(parts, "maxdiff = ($(spec.maxdiff[1]) $(spec.maxdiff[2]))")
         println(io, "automdl { $(join(parts, "  ")) }")
     end
-    spec.outlier && println(io, "outlier { }")
-    spec.residuals && println(io, "estimate { save = (rsd) }")
 
-    if spec.seats
-        savepart = spec.save === nothing ? "s10 s11 s12 s13" : join(spec.save, " ")
-        println(io, "seats { save = ($savepart) }")
-    else
-        savepart = spec.save === nothing ? "d10 d11 d12 d13" : join(spec.save, " ")
-        if spec.x11_mode === nothing
-            println(io, "x11 { save = ($savepart) }")
+    outlier_saves = get(save_by_block, "outlier", Symbol[])
+    if spec.outlier || !isempty(outlier_saves)
+        if isempty(outlier_saves)
+            println(io, "outlier { }")
         else
-            println(io, "x11 { mode = $(_X11_MODE_KEYWORDS[spec.x11_mode])  save = ($savepart) }")
+            println(io, "outlier { save = ($(join(sort(string.(outlier_saves)), " "))) }")
         end
     end
 
-    _render_spec_args(io, spec.spec_args)
+    estimate_saves = copy(get(save_by_block, "estimate", Symbol[]))
+    spec.residuals && !(:rsd in estimate_saves) && push!(estimate_saves, :rsd)
+    !isempty(estimate_saves) &&
+        println(io, "estimate { save = ($(join(sort(string.(estimate_saves)), " "))) }")
+
+    x11_or_seats_block = spec.seats ? "seats" : "x11"
+    x11_or_seats_saves = get(save_by_block, x11_or_seats_block, Symbol[])
+    if spec.seats
+        savepart = isempty(x11_or_seats_saves) ? "s10 s11 s12 s13" : join(sort(string.(x11_or_seats_saves)), " ")
+        println(io, "seats { save = ($savepart) }")
+    else
+        savepart = isempty(x11_or_seats_saves) ? "d10 d11 d12 d13" : join(sort(string.(x11_or_seats_saves)), " ")
+        x11_parts = String[]
+        spec.x11_mode !== nothing && push!(x11_parts, "mode = $(_X11_MODE_KEYWORDS[spec.x11_mode])")
+        if spec.seasonalma !== nothing
+            sma_str = spec.seasonalma isa Symbol ? _SEASONALMA_KEYWORDS[spec.seasonalma] :
+                "($(join([_SEASONALMA_KEYWORDS[f] for f in spec.seasonalma], " ")))"
+            push!(x11_parts, "seasonalma = $sma_str")
+        end
+        push!(x11_parts, "save = ($savepart)")
+        println(io, "x11 { $(join(x11_parts, "  ")) }")
+    end
+
+    merged_args = _merge_generic_saves(spec.spec_args, save_by_block)
+    if spec.maxlead !== nothing && !haskey(merged_args, "forecast.maxlead")
+        merged_args = merge(merged_args, Dict("forecast.maxlead" => string(spec.maxlead)))
+    end
+    if spec.force !== nothing
+        merged_args = merge(merged_args, Dict(
+            "force.type" => _FORCE_TYPE_KEYWORDS[spec.force],
+            "force.target" => _FORCE_TARGET_KEYWORDS[spec.force_target],
+        ))
+    end
+    _render_spec_args(io, merged_args)
 
     return String(take!(io))
+end
+
+# Blocks with their own typed rendering path above -- a `save` table
+# destined for one of these is handled inline where that block is
+# rendered, not merged into spec_args. `composite` is deliberately
+# excluded from this set (see render()'s own docstring): it has NO
+# rendering path, typed or generic, so any save request landing there is
+# silently unroutable -- consistent with this package having no
+# multi-series aggregation support at all.
+const _SAVE_TYPED_BLOCKS = Set(["series", "regression", "estimate", "outlier", "x11", "seats"])
+
+# Groups spec.save by the spec block each table belongs to (W.7.1),
+# using the generated _TABLE_BLOCK catalogue (src/known_tables.jl).
+# validate! already rejects any symbol not in _KNOWN_TABLES before a
+# spec can reach render(), so every symbol here resolves to a real block.
+function _save_by_block(spec::X13Spec)
+    by_block = Dict{String,Vector{Symbol}}()
+    spec.save === nothing && return by_block
+    for s in spec.save
+        blockname = _TABLE_BLOCK[s]
+        push!(get!(by_block, blockname, Symbol[]), s)
+    end
+    return by_block
+end
+
+# Merges the generic (non-typed-block) portion of save_by_block into
+# spec_args as synthetic "blockname.save" entries, unioned with any
+# save list the caller already wrote into spec_args directly for that
+# same block (e.g. spec_args["forecast.save"]).
+function _merge_generic_saves(spec_args::AbstractDict{String,String}, save_by_block::AbstractDict{String,Vector{Symbol}})
+    isempty(save_by_block) && return spec_args
+    merged = copy(spec_args)
+    for (blockname, syms) in save_by_block
+        blockname in _SAVE_TYPED_BLOCKS && continue
+        blockname == "composite" && continue
+        key = "$blockname.save"
+        if haskey(merged, key)
+            existing = Symbol.(split(_strip_parens(merged[key])))
+            merged[key] = "($(join(sort(unique(vcat(existing, syms))), " ")))"
+        else
+            merged[key] = "($(join(sort(syms), " ")))"
+        end
+    end
+    return merged
 end
 
 function _render_spec_args(io::IO, spec_args::AbstractDict{String,String})

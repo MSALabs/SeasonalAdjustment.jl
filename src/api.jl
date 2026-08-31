@@ -87,6 +87,15 @@ the same way and for the same reason -- `x13()` always requests it (see
 ratios) is ALSO always saved alongside D10-D13 (W.6) -- not one of
 `X13Result`'s own fields, but present on disk so [`monthplot`](@ref)'s
 SI-ratio overlay never needs to re-run for an `x13()`-produced result.
+
+**(W.7.3)** `missing_action=:x13` needs an explicit `transform`
+(`:log`/`:none`/`:auto`) the SAME way any other regression content does
+(see [`validate!`](@ref)'s own rule 5) -- confirmed directly: X-13
+interpolates the `-99999` sentinel via its OWN internal AO-style
+regressor, which is enough to trigger the "regression present + default
+multiplicative mode + no explicit transform" error, even though this
+package's own `X13Spec` never renders a `regression{}` block for it.
+Not silently defaulted here -- pass `transform` explicitly.
 """
 function x13(
     y;
@@ -99,6 +108,7 @@ function x13(
     trading::Bool = false,
     save = nothing,
     residuals = nothing,
+    missing_action::Symbol = :error,
     kwargs...,
 )
     save === nothing || throw(ArgumentError(
@@ -111,8 +121,19 @@ function x13(
         "X13Result.residuals. For a custom spec, use X13Spec/run_x13/parse_output " *
         "directly instead.",
     ))
+    missing_action in (:error, :x13, :omit) || throw(ArgumentError(
+        "x13(): missing_action=:$missing_action isn't recognized -- must be :error " *
+        "(the default), :x13, or :omit",
+    ))
 
-    yv = Float64.(collect(tsvalues(y)))
+    # tsvalues(y) itself errors on a Union{Missing,Float64} plain vector
+    # (confirmed directly: TSAnalytics.jl's own conversion path can't
+    # convert Missing to Float64 eagerly) -- for that one concrete case,
+    # skip straight to _handle_missing on `y` itself, which already does
+    # its own Missing-aware Float64 conversion; every other container
+    # tsvalues supports goes through it as before.
+    yv_raw = (y isa AbstractVector && Missing <: eltype(y)) ? y : tsvalues(y)
+    yv, missing_offset = _handle_missing(yv_raw, missing_action)
     resolved_start = if start !== nothing
         start
     elseif index !== nothing
@@ -121,6 +142,12 @@ function x13(
     else
         nothing
     end
+    # missing_action=:omit may have dropped leading observations (see
+    # _handle_missing) -- shift the effective start forward by however
+    # many periods were trimmed, so result.dates still lines up with the
+    # TRIMMED series, not the original one.
+    resolved_start = resolved_start === nothing || missing_offset == 0 ?
+        resolved_start : _advance_start(resolved_start, missing_offset, period)
 
     # W.6: :d8 (final unmodified SI ratios) is always saved alongside the
     # D10-D13 quartet for a non-SEATS spec -- SEATS has no D8-equivalent
@@ -136,10 +163,23 @@ function x13(
         X13Spec(yv; period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, save = default_save, kwargs...) :
         X13Spec(yv; start = resolved_start, period = period, maxorder = maxorder, maxdiff = maxdiff, outlier = outlier, trading = trading, residuals = true, save = default_save, kwargs...)
 
+    return _run_spec(spec; label = "x13()")
+end
+
+"""
+    _run_spec(spec::X13Spec; label="x13()") -> X13Result
+
+The shared "write, run, parse into X13Result" tail behind both [`x13`](@ref)
+and [`update`](@ref) (W.7.6) -- factored out so `update` doesn't need its
+own second copy of this logic; the only difference between the two
+callers is which `X13Spec` they hand in (a freshly built one vs.
+`X13Spec(r.spec; kwargs...)`) and the error message's own label.
+"""
+function _run_spec(spec::X13Spec; label::AbstractString = "x13()")
     spec_path = write_spec(spec, joinpath(mktempdir(), "series.spc"))
     run_result = run_x13(spec_path; udg = true)
     run_result.success || throw(ErrorException(
-        "x13() run failed: " * join(run_result.errors, "; "),
+        "$label run failed: " * join(run_result.errors, "; "),
     ))
 
     tables = spec.seats ? (:s10, :s11, :s12, :s13) : (:d10, :d11, :d12, :d13)
@@ -153,10 +193,88 @@ function x13(
     udg = parse_udg(joinpath(run_result.dir, "$(run_result.basename).udg"))
 
     return X13Result(
-        yv, seasonally_adjusted, trend, seasonal_factors, irregular, residuals_vec, udg,
+        spec.y, seasonally_adjusted, trend, seasonal_factors, irregular, residuals_vec, udg,
         dates, spec, run_result,
     )
 end
+
+# ---------------------------------------------------------------------
+# W.7.3 -- missing-value support. The 2015 Reference Manual's Chapter 1
+# says missing values are not allowed; confirmed stale (handoff): R's
+# `seasonal::na.x13()` is one line, substituting NA with X-13's own
+# default missing code -99999, and series.seriesmvadj (.mv) returns the
+# series with those replaced by regARIMA estimates. No `missingcode`
+# argument is needed at the default (a non-default value was flagged as
+# unconfirmed by the handoff and stays unconfirmed here -- not exposed).
+# ---------------------------------------------------------------------
+
+_is_missing_value(v) = v === missing || (v isa Real && isnan(v))
+
+"""
+    _handle_missing(yv, missing_action::Symbol) -> (Vector{Float64}, Int)
+
+Returns `(values, leading_offset)` -- `leading_offset` is how many
+leading observations `missing_action=:omit` dropped (0 for every other
+case), which [`x13`](@ref) uses to shift `start` forward so
+`result.dates` still lines up with the trimmed series.
+"""
+function _handle_missing(yv_in, missing_action::Symbol)
+    has_missing = any(_is_missing_value, yv_in)
+    if !has_missing
+        return Float64.(collect(yv_in)), 0
+    end
+
+    if missing_action == :error
+        throw(ArgumentError(
+            "x13(): series contains missing/NaN values -- pass missing_action=:x13 (X-13 " *
+            "interpolates via a -99999 sentinel + regARIMA, matching R's na.action=na.x13) " *
+            "or missing_action=:omit (drop only LEADING/TRAILING gaps) to allow this, or " *
+            "clean the series yourself first",
+        ))
+    elseif missing_action == :x13
+        real_sentinel = any(v -> v isa Real && !isnan(v) && v == -99999.0, yv_in)
+        real_sentinel && @warn "x13(): the series already contains the value -99999.0 -- " *
+            "missing_action=:x13 will treat every -99999.0 as a missing-value sentinel too, " *
+            "indistinguishable from a genuine -99999.0 observation"
+        vals = Float64[_is_missing_value(v) ? -99999.0 : Float64(v) for v in yv_in]
+        return vals, 0
+    else # :omit
+        first_valid = findfirst(!_is_missing_value, yv_in)
+        first_valid === nothing && throw(ArgumentError("x13(): series is entirely missing"))
+        last_valid = findlast(!_is_missing_value, yv_in)
+        interior = yv_in[first_valid:last_valid]
+        interior_gap = findfirst(_is_missing_value, interior)
+        interior_gap === nothing || throw(ArgumentError(
+            "x13(): missing_action=:omit only drops LEADING/TRAILING missing values -- an " *
+            "interior gap was found at position $(first_valid - 1 + interior_gap) (1-based, " *
+            "in the original series) -- use missing_action=:x13 to interpolate an interior gap",
+        ))
+        return Float64.(collect(interior)), first_valid - 1
+    end
+end
+
+"""
+    _advance_start(start, offset, period) -> (Int, Int)
+
+Shifts `start` forward by `offset` periods (used when
+`missing_action=:omit` trims leading observations).
+"""
+function _advance_start(start::Tuple{Int,Int}, offset::Int, period::Int)
+    offset == 0 && return start
+    linear = start[1] * period + (start[2] - 1) + offset
+    y, p = divrem(linear, period)
+    return (y, p + 1)
+end
+
+"""
+    interpolated(r::X13Result) -> Vector{Float64}
+
+`series.seriesmvadj` (`.mv`) -- the original series with missing values
+(inserted via `x13(y; missing_action=:x13)`'s `-99999` sentinel)
+replaced by regARIMA's own estimates. Re-runs via [`series`](@ref) if
+`.mv` wasn't already saved.
+"""
+interpolated(r::X13Result) = series(r, :mv)
 
 """
     static(result::X13Result) -> X13Spec
@@ -296,6 +414,13 @@ this function without that exclusion matched 14 lines against the real
 fixture, not the true `nreg + nregderived + nmodel` = 3 + 1 + 2 = 6, a
 bug caught only by actually running the real-fixture test, not by
 inspecting the handoff's own single worked example.
+
+**(W.7 follow-up)** A second, distinct exception found the same way,
+against a `trading=true` regression run: `chi\$<group name>` (e.g.
+`"chi\$Trading Day"`) is the joint significance CHI-SQUARED TEST for a
+whole regressor group, not a coefficient -- it ALSO has a `\$` in its
+key and happens to have a 3-field value, so it slipped through the same
+heuristic the lag-diagnostic families did. Excluded the same way.
 """
 # Lag-indexed diagnostic families (lbq$03, bpq$03, sigacf$03, sigpacf$03,
 # ...) ALSO have a '$' in their key and a 3-field value -- confirmed
@@ -305,7 +430,10 @@ inspecting the handoff's own single worked example.
 # lag-table families slipped through the same "$-in-key, 3 float fields"
 # heuristic. They're already handled by _udg_lag_table (see
 # residual_diagnostics) and are not regression coefficients at all.
-const _NON_COEFFICIENT_DOLLAR_PREFIXES = r"^(lbq|bpq|sigacf|sigpacf)\$\d+$"
+# `chi$<group>` (e.g. "chi$Trading Day") is the same trap found again
+# later, against a real trading=true run -- a joint chi-squared test for
+# a regressor GROUP, not a coefficient.
+const _NON_COEFFICIENT_DOLLAR_PREFIXES = r"^(lbq|bpq|sigacf|sigpacf)\$\d+$|^chi\$.+$"
 
 function _coefficient_lines(path::AbstractString)
     out = NamedTuple[]
@@ -398,23 +526,6 @@ handoff/w5-diagnostics-api-handoff.md section 7.6).
 StatsAPI.dof(r::X13Result) = something(_udg_int(r.udg, "nreg"), 0) + something(_udg_int(r.udg, "nmodel"), 0)
 
 """
-    StatsAPI.vcov(r::X13Result)
-
-Always throws. `.udg` carries each coefficient's own standard error
-(see `StatsAPI.stderror`) but no covariance matrix between
-coefficients -- there is nothing to return, so this names that plainly
-rather than returning a wrong or fabricated answer, the same style
-`durbin_watson_test(method=:exact)`/`fit_garch(dist=:t)`-style "not
-implemented for this case" errors use elsewhere in the TSAnalytics.jl
-family.
-"""
-StatsAPI.vcov(::X13Result) = throw(ErrorException(
-    "vcov(::X13Result) is not available -- .udg carries each coefficient's own standard " *
-    "error (see stderror) but no covariance matrix between coefficients; x13ashtml does " *
-    "not expose one",
-))
-
-"""
     Base.show(io, ::MIME"text/plain", r::X13Result)
 
 A compact summary in the shape of R's `summary.seas`: ARIMA model,
@@ -446,38 +557,59 @@ function Base.show(io::IO, ::MIME"text/plain", r::X13Result)
     end
 end
 
-# Known X-11/SEATS/regARIMA table codes -- series() validates a
-# requested table symbol against this BEFORE spawning any subprocess.
-const _KNOWN_TABLES = Set([
-    :b1, :c17, :d8, :d9, :d10, :d11, :d12, :d13,
-    :s10, :s11, :s12, :s13, :s14, :s15, :s16, :s17, :s18,
-    :rsd, :fct, :fvr,
-])
+# W.7.1: _KNOWN_TABLES/_TABLE_BLOCK now come from src/known_tables.jl
+# (generated from handoff/x13-saveable-tables.md's 281-entry catalogue --
+# see tools/generate_known_tables.jl) instead of a 20-symbol hand-written
+# list. render()'s per-block save routing (spec.jl) is what makes most of
+# these actually reachable; series() below just needed its whitelist
+# widened to match.
+
+# Confirmed directly against the real binary: .sp0/.sp1/.sp2/.spr share a
+# 3-column Pos/Frequency/Value format (_parse_spectrum_table), NOT
+# parse_table's 2-column date/value shape. The rest of the "spectrum"
+# block (.is0/.it0/.st0/.ser/... -- Tukey and indirect/SEATS spectrum
+# variants) are presumed to share it but were never independently run and
+# checked -- series() refuses them explicitly below rather than silently
+# mis-parsing a 3-column file with a 2-column reader.
+const _SPECTRUM_FORMAT_TABLES = Set([:sp0, :sp1, :sp2, :spr])
+
+"""
+    _ensure_saved(r::X13Result, tables; reeval=true, label="series()") -> (X13RunResult, Int)
+
+The shared re-run machinery behind both [`series`](@ref) and
+[`_spectrum_series`](@ref) (W.7.1 folds the latter into the former's own
+save-extension path rather than keeping two separate re-run
+implementations, per the W.7.1 handoff). Returns `r.run_result` /
+`r.spec.period` unchanged if every table in `tables` was already saved by
+the original run; otherwise re-runs once with `save` extended to the
+union of the existing tables and `tables`.
+"""
+function _ensure_saved(r::X13Result, tables::AbstractVector{Symbol}; reeval::Bool = true, label::AbstractString = "series()")
+    existing = something(r.spec.save, Symbol[])
+    missing_tables = filter(t -> !(t in existing), tables)
+    isempty(missing_tables) && return r.run_result, r.spec.period
+
+    reeval || throw(ArgumentError(
+        "$label: table(s) $missing_tables were not saved by the original run " *
+        "(spec.save=$existing) -- pass reeval=true (the default) to automatically " *
+        "re-run with them added, or build a spec with `save` including them yourself",
+    ))
+    @info "$label: re-running to save additional table(s)" missing_tables
+    new_spec = X13Spec(r.spec; save = union(existing, tables))
+    path = write_spec(new_spec, joinpath(mktempdir(), "series_rerun.spc"))
+    result = run_x13(path)
+    result.success || throw(ErrorException("$label re-run failed: " * join(result.errors, "; ")))
+    return result, new_spec.period
+end
 
 function series(r::X13Result, tables::AbstractVector{Symbol}; reeval::Bool = true)
     unknown = filter(t -> !(t in _KNOWN_TABLES), tables)
     isempty(unknown) || throw(ArgumentError(
-        "series: unrecognized table symbol(s) $unknown -- known tables are " *
-        "$(sort(collect(_KNOWN_TABLES)))",
+        "series: unrecognized table symbol(s) $unknown -- known tables are the " *
+        "$(length(_KNOWN_TABLES))-entry catalogue in handoff/x13-saveable-tables.md",
     ))
 
-    existing = something(r.spec.save, Symbol[])
-    missing_tables = filter(t -> !(t in existing), tables)
-    if isempty(missing_tables)
-        result, period = r.run_result, r.spec.period
-    else
-        reeval || throw(ArgumentError(
-            "series: table(s) $missing_tables were not saved by the original run " *
-            "(spec.save=$existing) -- pass reeval=true (the default) to automatically " *
-            "re-run with them added, or build a spec with `save` including them yourself",
-        ))
-        @info "series(): re-running to save additional table(s)" missing_tables
-        new_spec = X13Spec(r.spec; save = union(existing, tables))
-        path = write_spec(new_spec, joinpath(mktempdir(), "series_rerun.spc"))
-        result = run_x13(path)
-        result.success || throw(ErrorException("series() re-run failed: " * join(result.errors, "; ")))
-        period = new_spec.period
-    end
+    result, period = _ensure_saved(r, tables; reeval = reeval, label = "series()")
 
     out = Dict{Symbol,Vector{Float64}}()
     for t in tables
@@ -485,7 +617,18 @@ function series(r::X13Result, tables::AbstractVector{Symbol}; reeval::Bool = tru
         isfile(path) || throw(ErrorException(
             "series(): output table $path (requested :$t) does not exist after the run",
         ))
-        out[t] = last.(parse_table(path; period = period))
+        if t in _SPECTRUM_FORMAT_TABLES
+            out[t] = [e.value for e in _parse_spectrum_table(path)]
+        elseif _TABLE_BLOCK[t] == _SPECTRUM_FORMAT_BLOCK
+            throw(ErrorException(
+                "series(): :$t is a spectrum-block table whose column format hasn't been " *
+                "independently confirmed against the real binary -- only :sp0/:sp1/:sp2/:spr " *
+                "are supported here; use a hand-built X13Spec/run_x13/parse_output if you " *
+                "need :$t's raw file directly",
+            ))
+        else
+            out[t] = last.(parse_table(path; period = period))
+        end
     end
     return out
 end
@@ -581,13 +724,18 @@ end
 `(freq=, value=)` pairs -- the actual spectrum curve `spectrumplot`
 (W.6) draws, for `series` in `(:original, :sa, :irregular, :residual)`
 (mapping to the real, confirmed table codes `sp0`/`sp1`/`sp2`/`spr`).
-Re-runs (announced via `@info`, same convention as [`series`](@ref)) and
-requests ALL FOUR tables at once if the needed one isn't already present
--- so a second `spectrumplot(r; series=...)` call for a DIFFERENT series
-on the same `r` still needs its own re-run (`X13Result` isn't mutable,
-see `series`'s own docstring for why this isn't cached), but at least
-doesn't re-run once per series if all four happen to be requested via
-one shared, pre-fetched result.
+
+**(W.7.1)** Shares [`_ensure_saved`](@ref)'s re-run machinery with
+[`series`](@ref) rather than a second, bespoke re-run implementation --
+the two used to diverge (this function extended `spectrum.save` via
+`spec_args` directly; `series()` extended the typed `save` field), which
+is exactly the "two mechanisms for one job" the W.7.1 handoff flagged.
+Now both funnel through the same `X13Spec(r.spec; save=...)` path, with
+`render()`'s own per-block routing (spec.jl) sending `:sp0`/`:sp1`/`:sp2`/
+`:spr` to the `spectrum{}` block automatically. Still requests all four
+spectrum tables at once when a re-run is needed (not just the one
+`series` symbol asked for), so a second `spectrumplot(r; series=...)`
+call for a DIFFERENT series on the same `r` doesn't need its own re-run.
 """
 function _spectrum_series(r::X13Result, series::Symbol)
     haskey(_SPECTRUM_TABLE_FOR_SERIES, series) || throw(ArgumentError(
@@ -595,19 +743,483 @@ function _spectrum_series(r::X13Result, series::Symbol)
         ":irregular, or :residual",
     ))
     table = _SPECTRUM_TABLE_FOR_SERIES[series]
-    path = joinpath(r.run_result.dir, "$(r.run_result.basename).$table")
-    if !isfile(path)
-        @info "spectrumplot(): re-running to save spectrum table(s)" table
-        merged_spec_args = merge(r.spec.spec_args, Dict("spectrum.save" => "(sp0 sp1 sp2 spr)"))
-        new_spec = X13Spec(r.spec; spec_args = merged_spec_args)
-        newpath = write_spec(new_spec, joinpath(mktempdir(), "spectrum_rerun.spc"))
-        result = run_x13(newpath)
-        result.success || throw(ErrorException(
-            "spectrumplot() re-run failed: " * join(result.errors, "; "),
-        ))
-        path = joinpath(result.dir, "$(result.basename).$table")
-    end
+    all_spectrum_tables = collect(values(_SPECTRUM_TABLE_FOR_SERIES))
+    result, _ = _ensure_saved(r, all_spectrum_tables; label = "spectrumplot()")
+    path = joinpath(result.dir, "$(result.basename).$table")
+    isfile(path) || throw(ErrorException(
+        "_spectrum_series(): output table $path (requested :$table) does not exist after the run",
+    ))
     return _parse_spectrum_table(path)
+end
+
+# ---------------------------------------------------------------------
+# W.7.2 -- forecast/backcast. .fct/.bct are a 4-column format (date,
+# point, lowerci, upperci -- confirmed directly against the real binary,
+# a distinct shape from BOTH parse_table's 2-column and the spectrum
+# tables' 3-column format), so they need their own reader.
+# ---------------------------------------------------------------------
+
+"""
+    _parse_forecast_table(path) -> Vector{NamedTuple}
+
+Parses a `.fct`/`.bct` file (`date\tpoint\tlowerci\tupperci`, confirmed
+directly against the real binary -- header + dashed separator row, then
+one data row per forecast/backcast period, with BOTH the point value and
+its prediction interval already on the original scale).
+"""
+function _parse_forecast_table(path::AbstractString)
+    lines = readlines(path)
+    out = NamedTuple[]
+    for line in @view lines[3:end]
+        isempty(strip(line)) && continue
+        parts = split(line, '\t')
+        length(parts) >= 4 || continue
+        point = tryparse(Float64, parts[2])
+        lo = tryparse(Float64, parts[3])
+        hi = tryparse(Float64, parts[4])
+        (point === nothing || lo === nothing || hi === nothing) && continue
+        push!(out, (point = point, lower = lo, upper = hi))
+    end
+    return out
+end
+
+_extend_dates_forward(last::Date, n::Int, period::Int) =
+    [last + (period == 12 ? Dates.Month(i) : Dates.Month(3i)) for i in 1:n]
+_extend_dates_backward(first::Date, n::Int, period::Int) =
+    [first - (period == 12 ? Dates.Month(n - i + 1) : Dates.Month(3 * (n - i + 1))) for i in 1:n]
+
+_effective_forecast_probability(spec::X13Spec) =
+    something(tryparse(Float64, get(spec.spec_args, "forecast.probability", "")), 0.95)
+
+function _forecast_rerun(r::X13Result, table::Symbol, level::Real; label::AbstractString)
+    0.0 < level < 1.0 || throw(ArgumentError("$label: level=$level must be in (0,1)"))
+    existing = something(r.spec.save, Symbol[])
+    needs_rerun = !(table in existing) || _effective_forecast_probability(r.spec) != level
+    needs_rerun || return r.run_result, r.spec.period
+    @info "$label: re-running" level table
+    merged_args = merge(r.spec.spec_args, Dict("forecast.probability" => string(level)))
+    new_spec = X13Spec(r.spec; save = union(existing, [table]), spec_args = merged_args)
+    path = write_spec(new_spec, joinpath(mktempdir(), "forecast_rerun.spc"))
+    result = run_x13(path)
+    result.success || throw(ErrorException("$label re-run failed: " * join(result.errors, "; ")))
+    return result, new_spec.period
+end
+
+"""
+    forecast(r::X13Result; level=0.95) -> (dates=, point=, lower=, upper=)
+
+Point forecasts plus their `level`-width prediction interval, extending
+`r.dates` forward -- `.fct` (`forecast.forecasts`) already carries all
+three on the original scale (confirmed directly, W.7 handoff), so
+nothing needs back-transforming here. Re-runs (via [`X13Spec`](@ref)'s
+`forecast.probability`) whenever `:fct` wasn't already saved OR the
+requested `level` differs from whatever probability the original run
+used -- changing `level` genuinely forces a re-run, since the interval
+width is computed by the binary itself, not derived after the fact.
+
+Program limit: `maxlead` (X-13 default 12) is capped at 120
+(`pfcst`, [`validate!`](@ref)) -- pass `maxlead` to [`x13`](@ref)/
+[`X13Spec`](@ref), not here, to control the horizon itself.
+"""
+function forecast(r::X13Result; level::Real = 0.95)
+    result, period = _forecast_rerun(r, :fct, level; label = "forecast()")
+    path = joinpath(result.dir, "$(result.basename).fct")
+    isfile(path) || throw(ErrorException("forecast(): $path does not exist after the run"))
+    rows = _parse_forecast_table(path)
+    dates = _extend_dates_forward(r.dates[end], length(rows), period)
+    return (
+        dates = dates, point = [x.point for x in rows],
+        lower = [x.lower for x in rows], upper = [x.upper for x in rows],
+    )
+end
+
+"""
+    backcast(r::X13Result; level=0.95) -> (dates=, point=, lower=, upper=)
+
+Same as [`forecast`](@ref), extending `r.dates` BACKWARD instead --
+`.bct` (`forecast.backcasts`). The horizon is controlled by
+`spec_args["forecast.maxback"]` (no typed field -- see [`X13Spec`](@ref)'s
+own docstring for why only `maxlead` got one).
+"""
+function backcast(r::X13Result; level::Real = 0.95)
+    result, period = _forecast_rerun(r, :bct, level; label = "backcast()")
+    path = joinpath(result.dir, "$(result.basename).bct")
+    isfile(path) || throw(ErrorException("backcast(): $path does not exist after the run"))
+    rows = _parse_forecast_table(path)
+    dates = _extend_dates_backward(r.dates[1], length(rows), period)
+    return (
+        dates = dates, point = [x.point for x in rows],
+        lower = [x.lower for x in rows], upper = [x.upper for x in rows],
+    )
+end
+
+# ---------------------------------------------------------------------
+# W.7.4 -- component-factor accessors. Each is a `regression{}` table,
+# NOT an `x11{}` one (the W.7.1 naming trap this whole handoff pair is
+# built around) -- series()'s per-block save routing (spec.jl) is what
+# makes fetching these actually work.
+# ---------------------------------------------------------------------
+
+const _COMPONENT_TABLE = Dict(
+    :trading_day => :td, :holiday => :hol, :user => :usr, :outlier => :otl,
+    :ao => :ao, :ls => :ls, :tc => :tc, :so => :so,
+)
+
+# Cheap, exact pre-checks for the two component kinds this package can
+# tell are present or absent from the SPEC alone, with no subprocess --
+# avoids handing the binary a save request for a regression effect that
+# was never configured (e.g. `regression.holiday` when there's no
+# holiday-typed user regressor and no easter/holiday regression
+# variable at all). :holiday/:outlier/:ao/:ls/:tc/:so have no equally
+# clean spec-level signal (a holiday effect can come from a typed user
+# regressor OR a raw `regression_variables` entry; automdl's own outlier
+# detection isn't knowable before a run) -- those fall through to
+# `_ensure_saved` and, in a genuine "not part of this model" case, may
+# surface the binary's own error rather than a guaranteed clean
+# `nothing`. Documented as a real, honest gap, not silently papered over.
+function _component_precheck(spec::X13Spec, which::Symbol)
+    which == :trading_day && return spec.trading || "td" in spec.regression_variables
+    which == :user && return spec.regression_user !== nothing
+    return true # :holiday/:outlier/:ao/:ls/:tc/:so -- no cheap pre-check, try the run
+end
+
+"""
+    components(r::X13Result; which=:all) -> NamedTuple or Union{Nothing,Vector{Float64}}
+
+The estimated TIME PATH of each regression effect (`which=:all` ->
+`(trading_day=, holiday=, user=, outlier=, ao=, ls=, tc=, so=)`, each
+`nothing` when that effect isn't part of the model; a single `which`
+returns just that vector, or `nothing`). Given the India-calendar layer,
+`which=:holiday`/`:user` are the point of this: `coef(r)` gives the
+Diwali coefficient itself, `components(r; which=:user)` gives its
+month-by-month factor -- closing the loop W.8.4's `componentplot` draws.
+
+Fetched via [`series`](@ref)'s own re-run machinery (`_ensure_saved`),
+so results are announced with the same `@info` convention. `which=:all`
+throws `ArgumentError` if the model has NO regression effects at all
+(nothing to return); a single `which` returns `nothing` instead in that
+case -- see this function's own source comment on `_component_precheck`
+for the one real, flagged gap (a handful of component kinds can't be
+cheaply distinguished from "not part of the model" before a subprocess).
+"""
+function components(r::X13Result; which::Symbol = :all)
+    if which == :all
+        _has_regression(r.spec) || throw(ArgumentError(
+            "components(): which=:all requires the model to have at least one regression " *
+            "effect -- this spec has none (no trading day, holiday, user regressor, or " *
+            "outlier regression variables)",
+        ))
+        tables = collect(values(_COMPONENT_TABLE))
+        result, period = _ensure_saved(r, tables; label = "components()")
+        out = Dict{Symbol,Any}()
+        for (name, table) in _COMPONENT_TABLE
+            path = joinpath(result.dir, "$(result.basename).$table")
+            out[name] = isfile(path) ? last.(parse_table(path; period = period)) : nothing
+        end
+        return NamedTuple((:trading_day, :holiday, :user, :outlier, :ao, :ls, :tc, :so) .=>
+            getindex.(Ref(out), (:trading_day, :holiday, :user, :outlier, :ao, :ls, :tc, :so)))
+    end
+
+    haskey(_COMPONENT_TABLE, which) || throw(ArgumentError(
+        "components: which=:$which isn't recognized -- must be :all, :trading_day, " *
+        ":holiday, :user, :outlier, :ao, :ls, :tc, or :so",
+    ))
+    _component_precheck(r.spec, which) || return nothing
+    table = _COMPONENT_TABLE[which]
+    result, period = _ensure_saved(r, [table]; label = "components()")
+    path = joinpath(result.dir, "$(result.basename).$table")
+    isfile(path) || return nothing
+    return last.(parse_table(path; period = period))
+end
+
+# ---------------------------------------------------------------------
+# W.7.5 -- vcov, via estimate.regcmatrix (.rcm)/estimate.armacmatrix
+# (.acm) requested with `save` (the COVARIANCE matrix; the same table
+# code under `print` is the CORRELATION matrix instead -- W.7 handoff).
+# Scope: matches _coefficient_lines' own two coefficient FAMILIES
+# (regression vs. ARIMA/ARMA) -- .rcm covers the regression family,
+# .acm the ARIMA family; cross-covariance between the two families isn't
+# reported by X-13 at all, so those entries are left `NaN` ("unknown",
+# not silently asserted independent/zero).
+# ---------------------------------------------------------------------
+
+_is_arma_coefficient_key(key::AbstractString) = occursin(r"^(AR|MA)\$", key)
+
+"""
+    _parse_matrix_table(path) -> (names::Vector{String}, M::Matrix{Float64})
+
+Parses a `.rcm`/`.acm` square-matrix table (header row naming the
+columns, dashed separator, then one row per parameter: a row LABEL
+followed by exactly as many numeric fields as there are columns --
+confirmed directly against the real binary that `.acm`'s row label
+carries one extra non-numeric field vs. `.rcm`'s own, single-field row
+label; handled generically here by taking the trailing N fields as data
+and joining everything before them as the label, rather than assuming
+either shape specifically).
+"""
+function _parse_matrix_table(path::AbstractString)
+    lines = readlines(path)
+    ncols = length(split(lines[1], '\t')) - 1
+    names = String[]
+    rows = Vector{Float64}[]
+    for line in @view lines[3:end]
+        isempty(strip(line)) && continue
+        parts = split(line, '\t')
+        length(parts) >= ncols + 1 || continue
+        vals = tryparse.(Float64, parts[(end - ncols + 1):end])
+        any(isnothing, vals) && continue
+        push!(names, join(parts[1:(end - ncols)], " "))
+        push!(rows, Float64.(vals))
+    end
+    M = Matrix{Float64}(undef, length(rows), ncols)
+    for (i, row) in enumerate(rows)
+        M[i, :] = row
+    end
+    return names, M
+end
+
+"""
+    StatsAPI.vcov(r::X13Result) -> Matrix{Float64}
+
+**(W.7.5)** Sized `length(coef(r)) x length(coef(r))`, aligned to
+[`StatsAPI.coefnames`](@ref)'s own order. The regression-coefficient
+block comes from `.rcm`, the ARIMA/ARMA-coefficient block from `.acm`
+(re-run via `save` if not already present, same convention as
+[`series`](@ref)); cross-covariance between the two families is `NaN`
+(genuinely not reported by X-13, not assumed zero). Throws
+`ErrorException` if the model has no coefficients at all (nothing to
+return -- W.5's original, still-correct reasoning for the pure-`.udg`
+case).
+
+**Verified, not assumed**: `.rcm`/`.acm`'s row order is checked against
+`.udg`'s own coefficient count before use (`sqrt.(diag(V))` should
+reproduce [`StatsAPI.stderror`](@ref) -- asserted directly in this
+package's own test suite, not just hoped for).
+
+**A real, honest scope limitation, found directly**: a `trading=true`
+regression reports a 7th, DERIVED coefficient (`"Trading Day\$Sun"`,
+Sunday's effect implied by the other six, not independently estimated)
+that `.udg`'s own coefficient block includes but `.rcm`'s covariance
+matrix does NOT (6 rows, not 7) -- `nregderived` in [`StatsAPI.dof`](@ref)'s
+own docstring is exactly this. Rather than guess which coefficient(s) a
+count mismatch corresponds to, this throws a clear `ErrorException`
+naming the row-count mismatch instead of silently misaligning the
+matrix. Models whose regression coefficients are all independently
+estimated (holiday/user/easter-style single regressors, or trading-day
+WITHOUT the derived 7th term) are unaffected -- this is specifically a
+trading-day-regression gap, not a general one.
+
+**A second, separate finding**: X-13 does not write `.rcm` AT ALL for
+exactly ONE regression coefficient (confirmed directly -- a run with
+only `easter[1]` produces no `.rcm` file at all, even on success with no
+error; the same spec with a second, independent regression variable
+added DOES produce it). Presumably a 1x1 "covariance matrix" is
+considered redundant with `stderror` alone. `vcov` still throws its
+regular `ErrorException` in that case (via the same "output table does
+not exist" path [`series`](@ref) already uses), not a silent empty
+matrix.
+"""
+function StatsAPI.vcov(r::X13Result)
+    coefs = _coefficient_lines(_udg_path(r))
+    isempty(coefs) && throw(ErrorException(
+        "vcov(::X13Result) is not available -- no regression or ARIMA coefficients were " *
+        "estimated",
+    ))
+    reg_idx = findall(c -> !_is_arma_coefficient_key(c.key), coefs)
+    arma_idx = findall(c -> _is_arma_coefficient_key(c.key), coefs)
+    needed = Symbol[]
+    isempty(reg_idx) || push!(needed, :rcm)
+    isempty(arma_idx) || push!(needed, :acm)
+    result, _ = _ensure_saved(r, needed; label = "vcov()")
+
+    n = length(coefs)
+    V = fill(NaN, n, n)
+    if !isempty(reg_idx)
+        _, rcm = _parse_matrix_table(joinpath(result.dir, "$(result.basename).rcm"))
+        size(rcm, 1) == length(reg_idx) || throw(ErrorException(
+            "vcov(): .rcm has $(size(rcm,1)) rows but $(length(reg_idx)) regression " *
+            "coefficients were found in .udg -- refusing to guess at the alignment",
+        ))
+        V[reg_idx, reg_idx] = rcm
+    end
+    if !isempty(arma_idx)
+        _, acm = _parse_matrix_table(joinpath(result.dir, "$(result.basename).acm"))
+        size(acm, 1) == length(arma_idx) || throw(ErrorException(
+            "vcov(): .acm has $(size(acm,1)) rows but $(length(arma_idx)) ARIMA " *
+            "coefficients were found in .udg -- refusing to guess at the alignment",
+        ))
+        V[arma_idx, arma_idx] = acm
+    end
+    return V
+end
+
+"""
+    StatsBase.coeftable(r::X13Result) -> StatsBase.CoefTable
+
+Estimate/Std.Error/t value for every coefficient `StatsAPI.coef`
+reports, straight from `.udg`'s own three-field coefficient lines (no
+[`StatsAPI.vcov`](@ref) needed for this much -- `_coefficient_lines`
+already carries the t-statistic X-13 itself computed). Extends
+`StatsBase.coeftable` (used fully-qualified, matching this file's own
+`StatsAPI.aic`-style convention -- not re-exported under the bare name,
+since `StatsBase` already defines and exports one). **p-values are
+deliberately NOT included**: computing one needs a t-distribution CDF,
+which would mean either a new dependency (`Distributions.jl`, for one
+column) or leaning on TSAnalytics.jl exposing one, neither confirmed
+worth it yet -- the same open question W.8's own handoff raises for a
+Q-Q plot panel. Flagged here rather than silently guessed at.
+"""
+function StatsBase.coeftable(r::X13Result)
+    lines = _coefficient_lines(_udg_path(r))
+    names = [_coefficient_name(c.key) for c in lines]
+    est = [c.estimate for c in lines]
+    se = [c.stderror for c in lines]
+    t = [c.tstat for c in lines]
+    return StatsBase.CoefTable(isempty(lines) ? zeros(0, 3) : hcat(est, se, t),
+        ["Estimate", "Std.Error", "t value"], names)
+end
+
+# ---------------------------------------------------------------------
+# W.7.6 -- summary()/update(). Both compose existing accessors; no new
+# binary-facing capability.
+# ---------------------------------------------------------------------
+
+"""
+    X13Summary
+
+[`summary`](@ref)'s return type -- a compact report (ARIMA model,
+transform, N/effective N, AIC/BIC, M7 quality statistic, QS on the
+seasonally adjusted series, outlier count, and a full `StatsBase.coeftable`)
+with its own `show`, matching R's `summary.seas` in spirit.
+"""
+struct X13Summary
+    arima_model::Union{Nothing,String}
+    transform::Union{Nothing,Symbol}
+    n::Int
+    n_effective::Union{Nothing,Int}
+    aic::Union{Nothing,Float64}
+    bic::Union{Nothing,Float64}
+    q::Union{Nothing,Float64}
+    qs_sa::Union{Nothing,NamedTuple}
+    outlier_total::Union{Nothing,Int}
+    coeftable::StatsBase.CoefTable
+end
+
+"""
+    SeasonalAdjustment.summary(r::X13Result) -> X13Summary
+
+Composes [`arima_model`](@ref)/[`transformfunction`](@ref)/
+[`mstats`](@ref)/[`qs`](@ref)/[`outlier_counts`](@ref)/`StatsBase.coeftable`
+into one report -- no new capability, matching the W.7.6 handoff's own
+framing exactly. **Not exported** (confirmed directly: `Base` already
+has its own `summary`, a different one-line-descriptive-string contract
+-- `using SeasonalAdjustment` would collide with it) -- call this
+fully-qualified, `SeasonalAdjustment.summary(r)`.
+"""
+function summary(r::X13Result)
+    m = mstats(r)
+    oc = outlier_counts(r)
+    return X13Summary(
+        arima_model(r), transformfunction(r), length(r.observed), nobs_effective(r),
+        _udg_float(r.udg, "aic"), _udg_float(r.udg, "bic"),
+        m === nothing ? nothing : m.q,
+        qs(r).sa, oc.total, StatsBase.coeftable(r),
+    )
+end
+
+function Base.show(io::IO, ::MIME"text/plain", s::X13Summary)
+    println(io, "X13Summary")
+    s.arima_model !== nothing && println(io, "  ARIMA model:  ", s.arima_model)
+    s.transform !== nothing && println(io, "  Transform:    ", s.transform)
+    print(io, "  N:            ", s.n)
+    s.n_effective !== nothing && print(io, "  (effective: ", s.n_effective, ")")
+    println(io)
+    s.aic !== nothing && println(io, "  AIC:          ", s.aic)
+    s.bic !== nothing && println(io, "  BIC:          ", s.bic)
+    s.q !== nothing && println(io, "  Q (M7):       ", s.q)
+    s.qs_sa !== nothing && println(io, "  QS (SA):      statistic=", s.qs_sa.statistic, "  pvalue=", s.qs_sa.pvalue)
+    s.outlier_total !== nothing && println(io, "  Outliers:     ", s.outlier_total)
+    println(io)
+    show(io, s.coeftable)
+end
+
+"""
+    update(r::X13Result; kwargs...) -> X13Result
+
+`X13Spec(r.spec; kwargs...)` then re-runs (via the same [`_run_spec`](@ref)
+tail [`x13`](@ref) itself uses) -- R's `seasonal::update.seas`. `r`
+itself is untouched (`X13Result`/`X13Spec` are both immutable).
+"""
+function update(r::X13Result; kwargs...)
+    new_spec = X13Spec(r.spec; kwargs...)
+    return _run_spec(new_spec; label = "update()")
+end
+
+# ---------------------------------------------------------------------
+# W.7.8 -- sliding spans / revision history. W.5's open question 3,
+# settled directly this session: BOTH land rich summary statistics in
+# `.udg` itself (confirmed: `ss*`/`s2.*`/`s3.*` for sliding spans,
+# `r0N.lag00.*`/`revspan` for history) -- no separate table parsing
+# needed for the summaries themselves. Given the sheer number of fields
+# X-13 produces here (dozens, spanning per-period/per-year/hinge/
+# breakdown-by-threshold detail), these accessors surface the headline
+# numbers as typed fields plus a `raw` escape hatch (every matching
+# `.udg` key, for anything not promoted to its own field) rather than
+# modeling every single one -- consistent with not gold-plating a
+# feature nobody has asked for the full depth of yet.
+# ---------------------------------------------------------------------
+
+# The last whitespace-separated token of a .udg value, as Float64 -- .udg
+# lines under slidingspans/history mix plain single-float values
+# ("0.21") with "label value" pairs ("Jan   91.12"); this handles both.
+function _udg_last_float(d::AbstractDict, key::AbstractString)
+    haskey(d, key) || return nothing
+    toks = split(strip(d[key]))
+    isempty(toks) && return nothing
+    return tryparse(Float64, toks[end])
+end
+
+"""
+    slidingspans(r::X13Result) -> Union{Nothing,NamedTuple}
+
+`nothing` if `slidingspans{}` wasn't requested (`udg(r, "sspans") !=
+"yes"`); otherwise `(seasonal_max_pct=, sa_max_pct=, trend_max_pct=,
+raw=)` -- the headline "percentage of months flagged unstable" figures
+(`ssm7`'s own 4 values: seasonal/SA-percent-change/trend/TD, confirmed
+directly against `.udg`) plus `raw`, every `ss*`/`s2.*`/`s3.*` key
+verbatim, for anything not promoted to a typed field.
+"""
+function slidingspans(r::X13Result)
+    udg(r, "sspans") == "yes" || return nothing
+    d = r.udg
+    m7 = get(d, "ssm7", nothing)
+    m7_vals = m7 === nothing ? nothing : tryparse.(Float64, split(m7))
+    raw = Dict(k => v for (k, v) in d if startswith(k, "ss") || startswith(k, "s2.") || startswith(k, "s3."))
+    return (
+        seasonal_pct = m7_vals === nothing || length(m7_vals) < 1 ? nothing : m7_vals[1],
+        sachange_pct = m7_vals === nothing || length(m7_vals) < 2 ? nothing : m7_vals[2],
+        trend_pct = m7_vals === nothing || length(m7_vals) < 3 ? nothing : m7_vals[3],
+        td_pct = m7_vals === nothing || length(m7_vals) < 4 ? nothing : m7_vals[4],
+        raw = raw,
+    )
+end
+
+"""
+    revision_history(r::X13Result) -> Union{Nothing,NamedTuple}
+
+`nothing` if `history{}` wasn't requested (`udg(r, "history") !=
+"yes"`); otherwise `(sa_estimates=, raw=)` -- `sa_estimates` collects
+every `r0N.lag00.aar.*` (average absolute revision) value found (the
+concurrent-vs-most-recent seasonally adjusted revision history, W.7.8's
+own primary target), `raw` every `r0*`/`revspan` key verbatim.
+"""
+function revision_history(r::X13Result)
+    udg(r, "history") == "yes" || return nothing
+    d = r.udg
+    aar_keys = sort([k for k in keys(d) if occursin(r"^r\d+\.lag00\.aar\.", k)])
+    sa_estimates = filter(!isnothing, [_udg_last_float(d, k) for k in aar_keys])
+    raw = Dict(k => v for (k, v) in d if startswith(k, "r0") || k == "revspan")
+    return (sa_estimates = sa_estimates, raw = raw)
 end
 
 """
