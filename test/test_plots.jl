@@ -501,7 +501,8 @@ end
     rd = _apply_named(:componentplot, RESULT; reference = true, which = :trading_day)
     hl = filter(d -> get(d.plotattributes, :seriestype, :path) === :hline, rd)
     @test !isempty(hl)
-    @test hl[1].args[1] == [1.0]
+    @test hl[1].args[1] == [RESULT.dates[1], RESULT.dates[end]] # explicit Date x, see componentplot's own docstring
+    @test hl[1].args[2] == [1.0, 1.0]
 end
 
 @testset "componentplot -- which=:all throws with no regression effects at all" begin
@@ -585,7 +586,7 @@ if x13_binary_available()
         res = _build_result(udg = additive_udg)
         rd = _apply_named(:componentplot, res; which = :trading_day)
         hl = filter(d -> get(d.plotattributes, :seriestype, :path) === :hline, rd)
-        @test hl[1].args[1] == [0.0]
+        @test hl[1].args[2] == [0.0, 0.0]
     end
 
     @testset "componentplot -- absent components skipped, not flat-lined, under which=:all" begin

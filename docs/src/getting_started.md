@@ -217,16 +217,60 @@ monthplot(result; title="Airline Passengers: Seasonal Factors by Month (SI ratio
 `statsmodels` ships at all) round out the set; see the
 [API reference](api.md) for their full keyword options.
 
-Five more recipes (W.8) build on the accessors below:
-[`seasonalplot`](@ref) (`monthplot`'s transpose — one line per calendar
-year, so a drifting seasonal pattern is visible at a glance, another
-chart neither reference package ships), [`forecastplot`](@ref) (observed
-+ forecast + prediction-interval ribbon), [`residdiagplot`](@ref) (the
-residual series plus ACF/PACF/histogram panels, straight from X-13's own
-`.acf`/`.pcf` output), [`componentplot`](@ref) (a regression effect's
-month-by-month factor — the actual Diwali-shaped curve behind the
-coefficient [`coef`](@ref) reports), and [`spanplot`](@ref)
-(sliding-spans/revision-history stability diagnostics).
+Five more recipes (W.8) build on the accessors below. [`seasonalplot`](@ref)
+is `monthplot`'s transpose — one line per calendar year, so a drifting
+seasonal pattern (later years' summer peaks running higher, here) is
+visible at a glance, another chart neither reference package ships:
+
+```julia
+seasonalplot(result; title="Airline Passengers: Seasonal Factors by Year")
+```
+
+![Airline passengers seasonal factors, one line per year](assets/seasonalplot.png)
+
+[`forecastplot`](@ref) draws the observed series, the forecast extension
+joined to the last observation, and the prediction interval as a shaded
+ribbon:
+
+```julia
+result12 = x13(airline_passengers; start=(1949, 1), maxlead=12)
+forecastplot(result12; title="Airline Passengers: 12-Month Forecast")
+```
+
+![Airline passengers 12-month forecast with prediction interval](assets/forecastplot.png)
+
+[`residdiagplot`](@ref) is the standard residual review panel — series,
+ACF (with confidence bands), and a histogram — straight from X-13's own
+`.acf`/`.pcf` output, not recomputed:
+
+```julia
+residdiagplot(result)
+```
+
+![Airline passengers residual diagnostics: series, ACF, histogram](assets/residdiagplot.png)
+
+[`componentplot`](@ref) is the one that closes the India-calendar loop —
+[`coef`](@ref) gives a regression effect's coefficient, this shows its
+month-by-month factor (a trading-day effect below; a Diwali-typed user
+regressor works the same way):
+
+```julia
+result_td = x13(airline_passengers; start=(1949, 1), trading=true, transform=:log)
+componentplot(result_td; which=:trading_day, title="Airline Passengers: Trading-Day Factor")
+```
+
+![Airline passengers trading-day factor, month by month](assets/componentplot.png)
+
+[`spanplot`](@ref) surfaces `slidingspans`/`revision_history`'s own
+stability diagnostics — here, the per-calendar-month average absolute
+seasonal-factor revision across sliding spans:
+
+```julia
+result_ss = x13(airline_passengers; start=(1949, 1), spec_args=Dict("slidingspans" => ""))
+spanplot(result_ss; kind=:slidingspans, title="Airline Passengers: Sliding-Spans Stability")
+```
+
+![Airline passengers sliding-spans stability by calendar month](assets/spanplot.png)
 
 ## Forecasting, missing values, and component factors (W.7)
 

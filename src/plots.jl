@@ -684,15 +684,15 @@ RecipesBase.@userplot ComponentPlot
     ref_value = occursin("mult", lowercase(mode)) ? 1.0 : 0.0
 
     legend --> true
-    if reference
-        @series begin
-            seriestype := :hline
-            label --> ""
-            linestyle --> :dash
-            [ref_value]
-        end
-    end
 
+    # Data series drawn BEFORE the reference hline, deliberately -- a
+    # real rendering bug found generating this package's own docs
+    # images: a `:hline` series with no x data at all, added FIRST,
+    # confuses GR's axis-type inference once a later Date-x series
+    # arrives (a garbled combined date range, confirmed directly by
+    # rendering and visually inspecting the broken image). Drawing the
+    # real data first establishes the Date axis before the referenceless
+    # hline is added on top of it.
     pairs = if which === :all
         c = components(r) # throws ArgumentError itself if there's nothing at all
         ((:trading_day, c.trading_day), (:holiday, c.holiday), (:user, c.user), (:outlier, c.outlier))
@@ -705,6 +705,24 @@ RecipesBase.@userplot ComponentPlot
             seriestype := :path
             label --> string(name)
             r.dates, vals
+        end
+    end
+
+    if reference
+        # An x-less `:hline` series (just `[ref_value]`, the usual
+        # Plots.jl idiom) turned out to destabilize GR's Date-axis
+        # formatting once combined with the Date-x data series above --
+        # confirmed directly by rendering and visually inspecting the
+        # result (the x-axis silently fell back to raw day-count
+        # integers instead of formatted dates). Giving it real,
+        # explicit Date x-values spanning the same range as the data
+        # (still visually a flat horizontal dashed line at `ref_value`)
+        # keeps every series consistently Date-typed.
+        @series begin
+            seriestype := :hline
+            label --> ""
+            linestyle --> :dash
+            [r.dates[1], r.dates[end]], [ref_value, ref_value]
         end
     end
 end

@@ -142,11 +142,23 @@ end
 
 if x13_binary_available()
     @testset "forecast -- shape, interval ordering, dates continue with no gap" begin
-        res = x13(AIRLINE_Y; start = (1949, 1), maxlead = 12)
+        # seasonal_order=(0,1,1,12): a real, confirmed finding from
+        # generating this package's own docs images -- x13() with NO
+        # ARIMA model specified at all (no seasonal_order/arima_model,
+        # and automdl not requested) renders no arima{}/automdl{} block,
+        # and the real binary's own fallback default produces a
+        # DEGENERATE forecast (point identically 0.0, a huge flat
+        # symmetric interval, confirmed directly by reading the raw
+        # .fct file) -- `f.lower .< f.point .< f.upper` alone doesn't
+        # catch this (0 trivially sits inside a huge symmetric band), so
+        # a real, non-degenerate model plus a non-degenerate-point check
+        # both matter here.
+        res = x13(AIRLINE_Y; start = (1949, 1), seasonal_order = (0, 1, 1, 12), maxlead = 12)
         f = forecast(res)
         @test length(f.point) == 12
         @test length(f.dates) == length(f.lower) == length(f.upper) == 12
         @test all(f.lower .< f.point .< f.upper)
+        @test all(p -> p > 100, f.point)  # not degenerate -- airline passengers never near 0
         @test f.dates[1] == res.dates[end] + Dates.Month(1)
         @test f.dates[end] == Date(1961, 12)
         # NOTE: diff(::Vector{Date}) returns Day periods, which never
