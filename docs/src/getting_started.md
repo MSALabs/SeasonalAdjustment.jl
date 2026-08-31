@@ -217,6 +217,51 @@ monthplot(result; title="Airline Passengers: Seasonal Factors by Month (SI ratio
 `statsmodels` ships at all) round out the set; see the
 [API reference](api.md) for their full keyword options.
 
+Five more recipes (W.8) build on the accessors below:
+[`seasonalplot`](@ref) (`monthplot`'s transpose — one line per calendar
+year, so a drifting seasonal pattern is visible at a glance, another
+chart neither reference package ships), [`forecastplot`](@ref) (observed
++ forecast + prediction-interval ribbon), [`residdiagplot`](@ref) (the
+residual series plus ACF/PACF/histogram panels, straight from X-13's own
+`.acf`/`.pcf` output), [`componentplot`](@ref) (a regression effect's
+month-by-month factor — the actual Diwali-shaped curve behind the
+coefficient [`coef`](@ref) reports), and [`spanplot`](@ref)
+(sliding-spans/revision-history stability diagnostics).
+
+## Forecasting, missing values, and component factors (W.7)
+
+```julia
+result = x13(airline_passengers; start=(1949, 1), maxlead=12)
+
+f = forecast(result)                    # (dates=, point=, lower=, upper=), 95% by default
+f = forecast(result; level=0.99)        # re-runs -- the interval width is computed by the binary
+b = backcast(result)
+
+# X-13 interpolates a missing value via its own regARIMA estimate,
+# substituting the -99999 sentinel R's na.x13() also uses:
+y_with_gap = copy(airline_passengers); y_with_gap[20] = missing
+result2 = x13(y_with_gap; start=(1949, 1), missing_action=:x13, transform=:log)
+interpolated(result2)[20]               # the regARIMA-estimated replacement, not -99999
+
+# The estimated time path of a regression effect -- coef(result) gives
+# the Diwali/Easter/trading-day COEFFICIENT itself, this gives its
+# month-by-month factor:
+result3 = x13(airline_passengers; start=(1949, 1), trading=true, transform=:log)
+components(result3; which=:trading_day)
+
+using StatsAPI, StatsBase
+StatsAPI.vcov(result3)                  # regression/ARIMA coefficient covariance matrix
+StatsBase.coeftable(result3)            # Estimate / Std.Error / t value
+
+update(result3; outlier=true)           # re-runs with one setting changed, rest preserved
+```
+
+`force`/`seasonalma` are typed [`X13Spec`](@ref)/[`x13`](@ref) keywords,
+not accessors — `x13(y; force=:denton)` forces the seasonally adjusted
+series' annual totals to match the original series'; `x13(y;
+seasonalma=:s3x9)` picks a fixed seasonal moving-average filter instead
+of X-13's own default.
+
 ## Design notes worth knowing before you dig further
 
 - **The one deliberate exception in the TSAnalytics.jl family.** This
