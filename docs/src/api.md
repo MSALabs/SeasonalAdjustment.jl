@@ -64,13 +64,18 @@ spectrum_peaks
 ## StatsAPI contract
 
 `X13Result` implements `StatsAPI.aic`/`bic`/`aicc`/`loglikelihood`/
-`nobs`/`residuals`/`coef`/`coefnames`/`stderror`/`dof` -- use these
-fully-qualified (`StatsAPI.aic(r)`), not re-exported under their bare
-names. `StatsAPI.vcov` always throws (`.udg` has no covariance matrix).
+`nobs`/`residuals`/`coef`/`coefnames`/`stderror`/`dof`/`vcov` -- use
+these fully-qualified (`StatsAPI.aic(r)`), not re-exported under their
+bare names. `StatsAPI.vcov` (W.7.5) reads the real regression/ARIMA
+coefficient covariance matrix from `.rcm`/`.acm`; `StatsBase.coeftable`
+(also fully-qualified, `StatsBase` already exports its own generic)
+gives Estimate/Std.Error/t-value for every coefficient with no `vcov`
+needed for that much.
 
 ```@docs
 StatsAPI.dof
 StatsAPI.vcov
+StatsBase.coeftable
 ```
 
 ## Seasonal-parity functions
@@ -80,6 +85,30 @@ series
 select_order
 open_output
 import_spc
+```
+
+## Forecasts, missing values, components, model summary (W.7)
+
+`forecast`/`backcast` re-run automatically (same convention as
+[`series`](@ref)) whenever the requested table or `level` isn't already
+present; `components` fetches a regression effect's estimated time path
+(`coef`/`coefnames` give the coefficient itself, this gives its
+month-by-month factor); `update` re-runs `r.spec` with overridden
+kwargs. `SeasonalAdjustment.summary` is deliberately **not exported**
+-- `Base` already exports its own `summary` (a different, one-line-
+descriptive-string contract), so `using SeasonalAdjustment` would
+collide with it; call it fully-qualified.
+
+```@docs
+forecast
+backcast
+interpolated
+components
+update
+SeasonalAdjustment.summary
+X13Summary
+slidingspans
+revision_history
 ```
 
 ## Plotting (W.6)
@@ -109,6 +138,31 @@ non-`!` counterpart above, not a separate one:
 residplot!
 monthplot!
 spectrumplot!
+```
+
+### More recipes (W.8)
+
+`seasonalplot` is `monthplot`'s transpose (one line per calendar year);
+`forecastplot`/`componentplot` build on the W.7 accessors of the same
+name; `residdiagplot` uses the real `.acf`/`.pcf`/`.ac2` tables rather
+than recomputing from `r.residuals`; `spanplot` is deliberately scoped
+to the headline `.udg` summaries `slidingspans`/`revision_history`
+expose, not full per-span time series (see `spanplot`'s own docstring).
+
+```@docs
+seasonalplot
+forecastplot
+residdiagplot
+componentplot
+spanplot
+```
+
+```@docs
+seasonalplot!
+forecastplot!
+residdiagplot!
+componentplot!
+spanplot!
 ```
 
 ## Binary artifact management
