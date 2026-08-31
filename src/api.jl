@@ -1105,6 +1105,54 @@ struct X13Summary
     coeftable::StatsBase.CoefTable
 end
 
+# ---------------------------------------------------------------------
+# W.8.3 -- check.acf/check.pacf/check.acfsquared (.acf/.pcf/.ac2), for
+# residdiagplot. Confirmed directly against the real binary: yet ANOTHER
+# distinct column format -- `Lag\tSample_ACF\tSE_of_ACF\tLjung-Box_Q\t
+# df_of_Q\tP-value` for .acf/.ac2 (6 columns), `Lag\tSample_PACF\t
+# S.E._of_PACF` for .pcf (3 columns) -- neither parse_table's 2-column
+# nor _parse_matrix_table's square-matrix shape, so series() correctly
+# refuses these (they're in the "spectrum" block's sibling "check"
+# block, not covered by _SPECTRUM_FORMAT_TABLES at all -- a check-block
+# table was never going to reach that code path regardless). Only the
+# PRIMARY statistic column (the 2nd tab-separated field) is fetched --
+# the one residdiagplot's ACF/PACF panels actually draw; the standard
+# error / Ljung-Box columns are not currently exposed anywhere.
+# ---------------------------------------------------------------------
+
+function _parse_check_table(path::AbstractString)
+    lines = readlines(path)
+    out = Float64[]
+    for line in @view lines[3:end]
+        isempty(strip(line)) && continue
+        parts = split(line, '\t')
+        length(parts) >= 2 || continue
+        v = tryparse(Float64, parts[2])
+        v === nothing && continue
+        push!(out, v)
+    end
+    return out
+end
+
+"""
+    _check_series(r::X13Result, table::Symbol) -> Vector{Float64}
+
+The primary statistic column of a `check{}`-block table (`:acf`, `:pcf`,
+or `:ac2`) -- re-runs via `save` (same convention as [`series`](@ref))
+if not already present.
+"""
+function _check_series(r::X13Result, table::Symbol)
+    table in (:acf, :pcf, :ac2) || throw(ArgumentError(
+        "_check_series: :$table isn't a check{}-block table -- must be :acf, :pcf, or :ac2",
+    ))
+    result, _ = _ensure_saved(r, [table]; label = "residdiagplot()")
+    path = joinpath(result.dir, "$(result.basename).$table")
+    isfile(path) || throw(ErrorException(
+        "residdiagplot(): output table $path (requested :$table) does not exist after the run",
+    ))
+    return _parse_check_table(path)
+end
+
 """
     SeasonalAdjustment.summary(r::X13Result) -> X13Summary
 

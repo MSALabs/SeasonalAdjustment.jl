@@ -37,6 +37,11 @@ const _USERPLOT_WRAPPERS = Dict(
     :residplot => SeasonalAdjustment.ResidPlot,
     :monthplot => SeasonalAdjustment.MonthPlot,
     :spectrumplot => SeasonalAdjustment.SpectrumPlot,
+    :seasonalplot => SeasonalAdjustment.SeasonalPlot,
+    :forecastplot => SeasonalAdjustment.ForecastPlot,
+    :residdiagplot => SeasonalAdjustment.ResidDiagPlot,
+    :componentplot => SeasonalAdjustment.ComponentPlot,
+    :spanplot => SeasonalAdjustment.SpanPlot,
 )
 function _apply_named(name::Symbol, args...; kw...)
     wrapper = get(_USERPLOT_WRAPPERS, name, nothing)
@@ -388,6 +393,226 @@ end
     @test length(curve.args[1]) > 10
     @test all(isfinite, curve.args[2])
     @test issorted(curve.args[1])   # frequencies increase monotonically
+end
+
+# ---------------------------------------------------------------------
+# W.8 -- seasonalplot/forecastplot/residdiagplot/componentplot/spanplot.
+# Same Level 1 (apply_recipe, no backend) structural style as W.6 above.
+# A regression-bearing X13Result (trading=true + transform=:log, per
+# the real, confirmed finding this session that X-13's implicit default
+# x11 mode is multiplicative and needs an explicit transform whenever a
+# regression block is present) is built once, real-binary-gated, for
+# forecastplot/residdiagplot/componentplot's tests that genuinely need
+# re-run machinery (.fct/.acf/.td aren't in RESULT's own committed
+# fixture save list).
+# ---------------------------------------------------------------------
+
+@testset "seasonalplot -- one series per year, x is the period index not a date" begin
+    rd = _apply_named(:seasonalplot, RESULT)
+    @test length(rd) == 12 # 1949-1960, 144 obs -> 12 calendar years
+    @test rd[1].args[1] == collect(1:12)
+    @test eltype(rd[1].args[1]) <: Integer
+end
+
+@testset "seasonalplot -- each line carries that year's values in order" begin
+    rd = _apply_named(:seasonalplot, RESULT; series = :seasonal)
+    @test rd[1].args[2] ≈ RESULT.seasonal_factors[1:12]
+    @test rd[12].args[2] ≈ RESULT.seasonal_factors[133:144]
+end
+
+@testset "seasonalplot -- IS the transpose of monthplot (same data, different layout)" begin
+    sp = _apply_named(:seasonalplot, RESULT)
+    mp = _apply_named(:monthplot, RESULT; siratios = false)
+    @test length(sp) == 12                  # 12 years
+    @test length(sp[1].args[1]) == 12       # 12 periods per line
+    @test length(mp[1].args[1]) == 12       # 12 years per band
+    @test sort(vcat([d.args[2] for d in sp]...)) ≈
+          sort(vcat([d.args[2] for d in first(mp, 12)]...))
+end
+
+@testset "seasonalplot -- partial final year plots short, is not dropped" begin
+    rd = _apply_named(:seasonalplot, RAGGED_RESULT) # 145 obs
+    @test length(rd) == 13
+    @test length(rd[13].args[1]) == 1
+end
+
+@testset "seasonalplot -- quarterly gives 4 x-positions and Q labels" begin
+    rd = _apply_named(:seasonalplot, QUARTERLY_RESULT)
+    @test rd[1].args[1] == collect(1:4)
+    @test rd[1].plotattributes[:xticks][2] == ["Q1", "Q2", "Q3", "Q4"]
+end
+
+@testset "seasonalplot -- monthly tick labels reuse monthplot's own label constant" begin
+    a = _apply_named(:seasonalplot, RESULT)[1].plotattributes[:xticks][2]
+    b = _apply_named(:monthplot, RESULT)[1].plotattributes[:xticks][2]
+    @test a == b == ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+end
+
+@testset "seasonalplot -- series selector picks the right component; bogus throws" begin
+    for (sym, fld) in ((:observed, :observed), (:sa, :seasonally_adjusted),
+                        (:trend, :trend), (:irregular, :irregular), (:seasonal, :seasonal_factors))
+        rd = _apply_named(:seasonalplot, RESULT; series = sym)
+        @test rd[1].args[2] ≈ getfield(RESULT, fld)[1:12]
+    end
+    @test_throws ArgumentError _apply_named(:seasonalplot, RESULT; series = :bogus)
+end
+
+@testset "seasonalplot -- highlight mutes the rest" begin
+    rd = _apply_named(:seasonalplot, RESULT; highlight = :last)
+    alphas = [get(d.plotattributes, :alpha, 1.0) for d in rd]
+    @test alphas[end] > alphas[1]
+    rd2 = _apply_named(:seasonalplot, RESULT; highlight = [1949, 1960])
+    n_full = count(a -> a == 1.0, [get(d.plotattributes, :alpha, 1.0) for d in rd2])
+    @test n_full == 2
+end
+
+@testset "_seasonal_layout -- X13Result-free, period-generic" begin
+    L = SeasonalAdjustment._seasonal_layout(collect(1.0:24.0),
+        [Date(1949, 1) + Dates.Month(i) for i in 0:23], 12)
+    @test length(L) == 2
+    @test L[1].year == 1949 && L[1].y ≈ collect(1.0:12.0)
+    @test L[2].y ≈ collect(13.0:24.0)
+    L4 = SeasonalAdjustment._seasonal_layout(collect(1.0:24.0),
+        [Date(1990, 1) + Dates.Month(3i) for i in 0:23], 4)
+    @test length(L4) == 6
+end
+
+@testset "residdiagplot -- default 3 panels with a layout; panels controls count/order" begin
+    rd = _apply_named(:residdiagplot, RESULT)
+    @test haskey(rd[1].plotattributes, :layout)
+    @test length(rd) >= 3
+    @test length(_apply_named(:residdiagplot, RESULT; panels = [:series])) >= 1
+    @test_throws ArgumentError _apply_named(:residdiagplot, RESULT; panels = [:bogus])
+    @test_throws ArgumentError _apply_named(:residdiagplot, RESULT; panels = [:qq])
+end
+
+@testset "residdiagplot -- panels=[:acf,:pacf] titles both panels, confidence bands drawn" begin
+    rd = _apply_named(:residdiagplot, RESULT; panels = [:acf, :pacf])
+    @test any(d -> occursin("PACF", string(get(d.plotattributes, :title, ""))), rd)
+    @test count(d -> get(d.plotattributes, :seriestype, :path) === :hline, rd) >= 2
+end
+
+@testset "residdiagplot -- errors on a result with no residuals" begin
+    @test_throws ArgumentError _apply_named(:residdiagplot, NO_RESID_RESULT)
+end
+
+@testset "componentplot -- reference line follows finmode (real fixture is multiplicative)" begin
+    @test udg(RESULT, "finmode") == "multiplicative"
+    rd = _apply_named(:componentplot, RESULT; reference = true, which = :trading_day)
+    hl = filter(d -> get(d.plotattributes, :seriestype, :path) === :hline, rd)
+    @test !isempty(hl)
+    @test hl[1].args[1] == [1.0]
+end
+
+@testset "componentplot -- which=:all throws with no regression effects at all" begin
+    @test_throws ArgumentError _apply_named(:componentplot, RESULT; which = :all)
+end
+
+@testset "componentplot -- unrecognized which throws" begin
+    @test_throws ArgumentError _apply_named(:componentplot, RESULT; which = :bogus)
+end
+
+@testset "spanplot -- unrecognized kind throws" begin
+    @test_throws ArgumentError _apply_named(:spanplot, RESULT; kind = :bogus)
+end
+
+@testset "spanplot -- named error when slidingspans/history weren't requested" begin
+    @test_throws ArgumentError _apply_named(:spanplot, RESULT; kind = :slidingspans)
+    @test_throws ArgumentError _apply_named(:spanplot, RESULT; kind = :history)
+end
+
+if x13_binary_available()
+    # A single shared regression-bearing run for the W.8 tests that
+    # genuinely need re-run machinery (.fct/.acf/.td aren't in RESULT's
+    # own committed save list) -- built once per testset to avoid one
+    # subprocess per @test.
+    const _W8_REG_RESULT = x13(AIRLINE_Y; start = (1949, 1), trading = true, transform = :log, maxlead = 12)
+
+    @testset "forecastplot -- observed + forecast + ribbon, in that order" begin
+        rd = _apply_named(:forecastplot, _W8_REG_RESULT)
+        @test length(rd) >= 3
+        fc = rd[2]
+        @test fc.args[1][1] == _W8_REG_RESULT.dates[end]       # prepended join
+        @test fc.args[2][1] ≈ _W8_REG_RESULT.observed[end]
+        @test length(fc.args[1]) == 13                         # 1 + 12
+        rib = last(rd)
+        @test haskey(rib.plotattributes, :ribbon)
+        @test length(rib.args[1]) == 12
+        @test rib.args[1][1] == _W8_REG_RESULT.dates[end] + Dates.Month(1) # NOT the join point
+    end
+
+    @testset "forecastplot -- history=n truncates the observed series only" begin
+        rd = _apply_named(:forecastplot, _W8_REG_RESULT; history = 24)
+        @test length(rd[1].args[1]) == 24
+        @test length(rd[2].args[1]) == 13 # forecast unaffected
+    end
+
+    @testset "forecastplot -- backcast=true adds a leading extension before dates[1]" begin
+        res = x13(AIRLINE_Y; start = (1949, 1), trading = true, transform = :log,
+            spec_args = Dict("forecast.maxback" => "12"))
+        rd = _apply_named(:forecastplot, res; backcast = true)
+        @test any(d -> minimum(d.args[1]) < res.dates[1], rd)
+    end
+
+    @testset "residdiagplot -- ACF comes from .acf, matches _check_series directly" begin
+        rd = _apply_named(:residdiagplot, _W8_REG_RESULT; panels = [:acf], lags = 24)
+        acf_panel = rd[1]
+        @test length(acf_panel.args[2]) == 24
+        @test acf_panel.args[2] ≈ SeasonalAdjustment._check_series(_W8_REG_RESULT, :acf)[1:24] rtol = 1e-8
+    end
+
+    @testset "componentplot -- trading-day factors, non-degenerate, matches components()" begin
+        rd = _apply_named(:componentplot, _W8_REG_RESULT; which = :trading_day, reference = false)
+        @test length(rd) == 1
+        @test rd[1].args[2] ≈ components(_W8_REG_RESULT; which = :trading_day)
+        @test !all(==(rd[1].args[2][1]), rd[1].args[2])
+    end
+
+    @testset "componentplot -- additive mode uses a 0.0 reference line" begin
+        # Synthetic finmode edit, not a fresh real run: confirmed
+        # directly that requesting x11_mode=:additive alongside ANY
+        # regression content is not reliably honored end to end (a
+        # trading=true regressor hits its own separate leap-year error;
+        # a plain easter[1] regressor with transform=:none runs
+        # successfully but .udg's own finmode still reports
+        # "multiplicative" -- X-13 apparently keeps multiplicative
+        # preadjustment internally whenever a regARIMA model is present,
+        # regardless of the requested x11 mode). This isolates what the
+        # test actually checks -- componentplot's OWN reference-line
+        # logic reading `finmode` -- from that separate, unresolved
+        # binary-mode-negotiation question.
+        additive_udg = Dict(k => (k == "finmode" ? "additive" : v) for (k, v) in RESULT.udg)
+        res = _build_result(udg = additive_udg)
+        rd = _apply_named(:componentplot, res; which = :trading_day)
+        hl = filter(d -> get(d.plotattributes, :seriestype, :path) === :hline, rd)
+        @test hl[1].args[1] == [0.0]
+    end
+
+    @testset "componentplot -- absent components skipped, not flat-lined, under which=:all" begin
+        rd = _apply_named(:componentplot, _W8_REG_RESULT; which = :all) # only trading, no holiday/user/outlier
+        for d in rd
+            get(d.plotattributes, :seriestype, :path) === :hline && continue
+            @test !all(==(d.args[2][1]), d.args[2])
+        end
+        @test length(filter(d -> get(d.plotattributes, :seriestype, :path) !== :hline, rd)) == 1
+    end
+
+    @testset "spanplot -- slidingspans bar chart reachable once requested" begin
+        res = x13(AIRLINE_Y; start = (1949, 1), spec_args = Dict("slidingspans" => ""))
+        rd = _apply_named(:spanplot, res; kind = :slidingspans)
+        @test length(rd) == 1
+        @test get(rd[1].plotattributes, :seriestype, :path) === :bar
+        @test length(rd[1].args[2]) == 12
+    end
+
+    @testset "spanplot -- history line reachable once requested" begin
+        res = x13(AIRLINE_Y; start = (1949, 1), spec_args = Dict("history.estimates" => "(sadj sadjchng)"))
+        rd = _apply_named(:spanplot, res; kind = :history)
+        @test length(rd) == 1
+        @test !isempty(rd[1].args[2])
+    end
+else
+    @warn "skipping W.8 real-binary plot tests: x13_binary_available() is false in this environment"
 end
 
 # ---------------------------------------------------------------------

@@ -91,6 +91,23 @@ plot(result)                 # original + seasonally adjusted, R's plot.seas
 residplot(result)            # regARIMA residuals
 monthplot(result)            # seasonal factors by calendar period, with SI-ratio stems
 spectrumplot(result)         # spectral peaks -- neither R nor Python ships this one
+seasonalplot(result)         # one line per year, monthplot's transpose -- neither R nor Python ships this one
+forecastplot(result)         # observed + forecast + prediction-interval ribbon
+residdiagplot(result)        # residual series + ACF/PACF/histogram panel
+componentplot(result)        # trading-day/holiday/user/outlier factor time paths
+spanplot(result)             # sliding-spans / revision-history diagnostics
+```
+
+Forecasts, missing-value handling, component-factor accessors, and
+`force`/`seasonalma` (W.7):
+
+```julia
+f = forecast(result; level = 0.95)     # (dates=, point=, lower=, upper=)
+b = backcast(result)
+x13(y; missing_action = :x13)          # X-13 interpolates via a -99999 sentinel + regARIMA
+components(result; which = :holiday)   # the estimated holiday-effect time path
+StatsAPI.vcov(result)                  # regression/ARIMA coefficient covariance matrix
+x13(y; force = :denton)                # force SA annual totals to match the original series
 ```
 
 ## License
