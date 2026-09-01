@@ -2,6 +2,16 @@
 
 ~21 pages, 13 figures, `airline` throughout except one figure.
 
+**Status: done.** See `book/src/introduction/04-x11-by-hand.md` through
+`08-extreme-values-modes.md`, `book/examples/derivations.jl`, `ch04.jl`,
+`ch06.jl`, and `test/test_book_examples.jl`'s "Chapter 4"/"Chapter 5"/
+"Chapter 6" testsets. Real bugs caught and fixed during writing: Henderson-9's
+closed-form denominator (summed to 1.75, not 1 -- fixed by normalising the
+numerator by its own sum instead) and the toy X-11's convergence step
+(dividing the running `sa` by the trend each pass instead of the original
+`y`, which oscillates instead of converging). B-12 shipped as a labelled
+synthetic schematic, not real data -- no near-zero dataset exists yet.
+
 **Master:** `introduction-design.md`
 **Precedes:** written after Chapter 9, which is already drafted from its own handoff
 

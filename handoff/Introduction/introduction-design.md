@@ -265,6 +265,10 @@ deliver.
    `book/src/introduction/09-end-of-series.md`.
 2. **Chapters 4–8** (Part II) — buildable except B-12. The custom filter figures
    are real work and double as verification artifacts for the native engine.
+   **Done** — see `book/src/introduction/04-x11-by-hand.md` through
+   `08-extreme-values-modes.md`. B-12 shipped as a labelled synthetic
+   schematic (see that chapter's own note) since no near-zero dataset
+   exists yet.
 3. **Chapters 16–20** (Part V), all five chapters — no longer blocked; Part
    V's own §0 finding (the airline fixture already fails several detailed
    diagnostics) means the designed failing dataset was never actually needed.
