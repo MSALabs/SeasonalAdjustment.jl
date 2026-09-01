@@ -3,6 +3,16 @@
 ~16 pages, 13 figures. The most valuable part of the book for a practitioner and
 the hardest to write well.
 
+**Status: done.** See `book/src/introduction/16-why-so-many-diagnostics.md`
+through `20-stability-revisions.md` and `A-checklist.md`, and
+`test/test_book_examples.jl`'s "Chapters 17-19" / "Chapter 20" testsets. The
+§0 finding below (QS vs. spectrum disagreeing on the canonical airline
+adjustment) is asserted directly in the test suite, not just described in
+prose. Chapter 20 used `appliance` (192 months) rather than `airline`, per
+§1's own reasoning. E-13's flowchart is a from-scratch schematic, not a
+hand-drawn diagram — open question 4/5 elsewhere in this project's design
+docs about who draws diagrams still applies to it.
+
 **Master:** `introduction-design.md`
 **Written after:** Chapter 9, then Part II
 

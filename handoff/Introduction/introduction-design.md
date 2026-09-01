@@ -272,6 +272,8 @@ deliver.
 3. **Chapters 16–20** (Part V), all five chapters — no longer blocked; Part
    V's own §0 finding (the airline fixture already fails several detailed
    diagnostics) means the designed failing dataset was never actually needed.
+   **Done** — see `book/src/introduction/16-why-so-many-diagnostics.md`
+   through `20-stability-revisions.md` and `A-checklist.md`.
 4. **Chapters 1–3** (Part I) — after II and V, so the framing reflects what the
    technical chapters established.
 5. **Chapters 10–13** — `iip_india` and `componentplot` both shipped; no
