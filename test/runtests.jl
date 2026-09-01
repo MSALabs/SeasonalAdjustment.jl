@@ -39,6 +39,9 @@ import TSAnalytics  # W.9: `using SeasonalAdjustment` does NOT bring the
                                     #                vcov, summary/update, force/seasonalma,
                                     #                slidingspans/history
     include("test_datasets.jl")    # W.9 -- bundled example datasets (data/*.csv)
+    include("test_book_examples.jl") # Introduction book -- asserts the premises
+                                    # of the worked examples behind each chapter's
+                                    # figures and numbers (currently: Chapter 9)
 
     # Extended suite (R/Python-cross-validated extreme cases) -- opt-in
     # only, see test/extended/runtests.jl's own module comment. Kept out
