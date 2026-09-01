@@ -4,6 +4,12 @@ CurrentModule = SeasonalAdjustment
 
 # API Reference
 
+Every function, its full signature, keywords and defaults. For a
+worked example of *when* to reach for one, see the
+[Manual](manual/01-specifications.md); for what the underlying concept
+means, see the [Introduction](introduction/01-why-adjust.md). This page
+deliberately does not repeat either.
+
 ## The idiomatic entry point
 
 ```@docs
@@ -40,9 +46,10 @@ parse_udg
 
 ## Diagnostics
 
-Typed accessors over `.udg`, the binary's own diagnostics dump. Each
-accepts either a raw `Dict` (fixture/testable with no binary) or an
-`X13Result` directly.
+Typed accessors over `.udg`. Each accepts either a raw `Dict` or an
+`X13Result` directly. See the Manual's
+[Accessing Diagnostics](manual/10-diagnostics-access.md) page for which
+to reach for and what each one means.
 
 ```@docs
 udg
@@ -66,11 +73,10 @@ spectrum_peaks
 `X13Result` implements `StatsAPI.aic`/`bic`/`aicc`/`loglikelihood`/
 `nobs`/`residuals`/`coef`/`coefnames`/`stderror`/`dof`/`vcov` -- use
 these fully-qualified (`StatsAPI.aic(r)`), not re-exported under their
-bare names. `StatsAPI.vcov` reads the real regression/ARIMA
-coefficient covariance matrix from `.rcm`/`.acm`; `StatsBase.coeftable`
-(also fully-qualified, `StatsBase` already exports its own generic)
-gives Estimate/Std.Error/t-value for every coefficient with no `vcov`
-needed for that much.
+bare names; `StatsBase.coeftable` is likewise fully-qualified, since
+`StatsBase` already exports its own generic. See the Manual's
+[Accessing Diagnostics](manual/10-diagnostics-access.md) page for what
+each one returns and where the covariance data comes from.
 
 ```@docs
 StatsAPI.dof
@@ -89,15 +95,12 @@ import_spc
 
 ## Forecasts, missing values, components, model summary
 
-`forecast`/`backcast` re-run automatically (same convention as
-[`series`](@ref)) whenever the requested table or `level` isn't already
-present; `components` fetches a regression effect's estimated time path
-(`coef`/`coefnames` give the coefficient itself, this gives its
-month-by-month factor); `update` re-runs `r.spec` with overridden
-kwargs. `SeasonalAdjustment.summary` is deliberately **not exported**
--- `Base` already exports its own `summary` (a different, one-line-
-descriptive-string contract), so `using SeasonalAdjustment` would
-collide with it; call it fully-qualified.
+`SeasonalAdjustment.summary` is deliberately **not exported** -- `Base`
+already exports its own `summary` (a different, one-line-descriptive-
+string contract), so `using SeasonalAdjustment` would collide with it;
+call it fully-qualified. See [Output and Tables](manual/02-output-tables.md)
+for the automatic re-run convention `forecast`/`backcast`/`components`
+share with [`series`](@ref).
 
 ```@docs
 forecast
@@ -113,14 +116,16 @@ revision_history
 
 ## Plotting
 
-`RecipesBase.jl` recipes -- load a plotting backend (`using Plots`, a
-Makie backend, ...) to actually draw. `plot(r::X13Result)` needs no
-separate import; `residplot`/`monthplot`/`spectrumplot` are each a
-`RecipesBase.@userplot` wrapper (NOT a plain series-type recipe --
-`X13Result` already has its own bare type recipe for `plot(r)`, which
-would otherwise silently shadow a same-type series-type recipe; see
-`residplot`'s own docstring for the full, real-binary/real-backend-
-confirmed story).
+`RecipesBase.jl` recipes; see the Manual's [Plots](manual/06-plots.md)
+page for basic usage and which backend to pick. One architectural note
+worth keeping here rather than in the Manual: `residplot`/`monthplot`/
+`spectrumplot` are each a `RecipesBase.@userplot` wrapper, deliberately
+NOT a plain series-type recipe -- `X13Result` already has its own bare
+type recipe for `plot(r)`, which would otherwise silently shadow a
+same-type series-type recipe (confirmed directly: an earlier version
+built this way rendered `plot(r)`'s own series under a different
+recipe's name with no error). See `residplot`'s own docstring for the
+full story.
 
 ```@docs
 residplot
@@ -141,12 +146,8 @@ spectrumplot!
 
 ### More recipes
 
-`seasonalplot` is `monthplot`'s transpose (one line per calendar year);
-`forecastplot`/`componentplot` build on the accessors of the same
-name above; `residdiagplot` uses the real `.acf`/`.pcf`/`.ac2` tables rather
-than recomputing from `r.residuals`; `spanplot` is deliberately scoped
-to the headline `.udg` summaries `slidingspans`/`revision_history`
-expose, not full per-span time series (see `spanplot`'s own docstring).
+See the Manual's [Plots](manual/06-plots.md) page for what each one
+shows.
 
 ```@docs
 seasonalplot
@@ -197,19 +198,10 @@ custom_holiday_regressor
 
 ## Bundled datasets
 
-Four real example datasets ship with the package (`data/*.csv`, ~30 KB
-total, plain committed CSV rather than Artifacts.toml -- see
-`dataset_info(name)` for full provenance on each): `airline` (Box & Jenkins'
-Series G, this package's own verification baseline), `appliance` (the
-X-13 Reference Manual's own worked example, a genuinely different
-seasonal shape from `airline`), `appliance_q` (`appliance` aggregated to
-quarters -- `:derived`, not independently published), and `iip_india`
-(India's Index of Industrial Production, MOSPI -- a real COVID level
-shift, licensing terms not independently re-verified this session, see
-`dataset_info("iip_india")`). `dataset(name)` returns a plain
-`(date=, value=)` `NamedTuple` -- already a Tables.jl column table with
-no `Tables.jl` dependency of its own -- that [`x13`](@ref) accepts
-directly (`x13(dataset("airline"))`, `start` inferred automatically).
+Four real example datasets ship with the package. See the Manual's
+[Datasets](manual/07-datasets.md) page for what each one is and how to
+use your own data instead, and `dataset_info(name)` for full provenance
+on any one of them at the REPL.
 
 ```@docs
 dataset
