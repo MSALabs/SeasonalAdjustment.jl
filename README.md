@@ -33,9 +33,21 @@ sequenced behind a working wrapper.
 
 ## Installation
 
+**Alpha release.** Neither this package nor `TSAnalytics.jl` is in
+Julia's General registry yet, so both must be installed together in a
+single call — two separate `Pkg.add` calls fail in either order:
+
 ```julia
-] add https://github.com/MSALabs/SeasonalAdjustment.jl
+using Pkg
+Pkg.add([
+    PackageSpec(url = "https://github.com/MSALabs/TSAnalytics.jl",
+                rev = "v0.1.0-alpha.1"),
+    PackageSpec(url = "https://github.com/MSALabs/SeasonalAdjustment.jl",
+                rev = "v0.1.0-alpha.1"),
+])
 ```
+
+After registration this becomes `] add SeasonalAdjustment`.
 
 ## Quick example
 
@@ -110,6 +122,42 @@ components(result; which = :holiday)   # the estimated holiday-effect time path
 StatsAPI.vcov(result)                  # regression/ARIMA coefficient covariance matrix
 x13(y; force = :denton)                # force SA annual totals to match the original series
 ```
+
+## Known gaps in the alpha
+
+So nobody reports these as bugs:
+
+| Area | Status |
+|---|---|
+| Native Julia engine (no `x13prebuilt` binary) | not started -- deliberately sequenced behind the wrapper |
+| Some SEATS-specific options (`noadmiss`, `rmod`, `maxit`, finite-vs-semi-infinite filters) | not surfaced as typed keywords -- reachable via `spec_args` |
+| Near-zero / zero-crossing worked example | no such dataset is bundled yet |
+| PDF build of the documentation | not yet built |
+| Both packages' UUIDs | still placeholders, not yet regenerated |
+
+Everything else that shipped earlier in this package's development --
+forecasts, missing-value handling, `vcov`/`coeftable`/`summary`/`update`,
+`force`/`seasonalma`, sliding spans and revision history, all nine plot
+recipes, the full 281-entry saveable-table catalogue, the four bundled
+datasets, and the twenty-chapter *Introduction to Seasonal Adjustment* --
+is implemented and documented, not pending.
+
+**What is worth reporting**, in priority order:
+
+1. Anything where the package's output disagrees with R's `seasonal` on
+   the same specification. That is the highest-value signal and the
+   hardest to find internally.
+2. Platform failures -- `x13_binary_available()` returning `false`, or
+   macOS dynamic-library errors. The artifact covers Linux, macOS and
+   Windows but real-world coverage beyond development machines is
+   untested.
+3. Specifications the package cannot express. `spec_args` is the escape
+   hatch; if something needs it that you expected as a keyword, that is
+   a design signal worth reporting on its own.
+4. Error messages that do not say what to do next.
+5. If you have real Indian monthly or quarterly data you can share --
+   it may resolve the near-zero-series gap above, or simply be a useful
+   second real-world test of the calendar layer.
 
 ## License
 

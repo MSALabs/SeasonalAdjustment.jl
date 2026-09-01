@@ -4,7 +4,13 @@
 
 const PAGES = [
     "Home" => "index.md",
-    "Getting Started" => "getting_started.md",
+    "Getting Started" => [
+        "getting-started/01-installation.md",
+        "getting-started/02-first-adjustment.md",
+        "getting-started/03-was-it-any-good.md",
+        "getting-started/04-beyond-defaults.md",
+        "getting-started/05-where-next.md",
+    ],
     "Introduction to Seasonal Adjustment" => [
         "introduction/01-why-adjust.md",
         "introduction/02-decomposition.md",
@@ -27,6 +33,7 @@ const PAGES = [
         "introduction/19-model-adequacy.md",
         "introduction/20-stability-revisions.md",
         "introduction/A-checklist.md",
+        "introduction/B-further-reading.md",
     ],
     "API Reference" => "api.md",
 ]
