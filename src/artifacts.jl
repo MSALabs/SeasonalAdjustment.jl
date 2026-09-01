@@ -118,12 +118,53 @@ artifact cache. Installs it manually instead, via `p7zip_jll` (the same
 7-Zip binary Pkg itself already depends on and uses internally) invoked
 as a normal, complete zip extraction (`7z x <archive> -o<dir> -y`), not
 routed through the tar-only pipe.
+
+A second, genuinely persistent (not the transient AV-scan case
+`_spawn_retrying_eacces` covers) EACCES bug was found the same way --
+real Windows CI, then confirmed by direct reproduction on a native
+Windows machine, not a hypothesis: `7z x` on Windows honors the Unix
+permission bits Zip's "external file attributes" field stores when the
+archive was built on a Unix CI runner, and the upstream archive stores
+`x13ashtml.exe` as non-executable (`.exe` alone makes a file runnable
+on native Windows, so nothing upstream ever needed to set the bit).
+The result is an NTFS ACL that grants the invoking user Read and
+Write-Attributes but not Execute -- confirmed directly with `icacls`
+(`user:(R,WA)`, no `RX`), and confirmed as the actual cause by spawning
+the extracted `.exe` directly (`Access is denied`) and then again after
+manually granting `RX` (runs cleanly). `chmod(dest, 0o755)` (the fix
+already used for the Linux artifact) is a no-op for this on Windows --
+Julia's `chmod` doesn't manipulate NTFS ACLs -- so the fix instead
+shells out to `icacls` itself, matching how this same file already
+shells out to `p7zip_jll` for the extraction.
+
+The `icacls` grant has to run on the artifact's *final* content-addressed
+directory, not inside this function's `unpack!` callback -- confirmed
+directly: granting `RX` on the callback's own `dir` (a temp staging
+directory Pkg later renames into place) does not survive
+`Pkg.Artifacts.create_artifact`'s own finalization, which re-applies its
+own restrictive ACL once the tree hash is verified and the artifact is
+locked into `~/.julia/artifacts/<hash>`, silently discarding the grant
+made during unpacking. `_windows_x13_artifact_dir` therefore re-applies
+the grant itself after `_custom_artifact_dir` returns, guarded by
+`_windows_acl_fixed` so the (correct but not free -- a real subprocess
+spawn) `icacls` call only actually runs once per Julia session: this
+function is on the hot path (`x13_binary_path()` calls it on every
+single `run_x13`/`x13` invocation), and the grant, once applied, holds
+for the rest of the process's lifetime.
 """
+const _windows_acl_fixed = Ref(false)
+
 function _windows_x13_artifact_dir()
     platform = Base.BinaryPlatforms.Platform("x86_64", "windows")
-    return _custom_artifact_dir(platform) do tmpfile, dir
+    dir = _custom_artifact_dir(platform) do tmpfile, dir
         run(`$(p7zip_jll.p7zip()) x $tmpfile -o$dir -y`)
     end
+    if !_windows_acl_fixed[]
+        exe = joinpath(dir, "x13ashtml", "x13ashtml.exe")
+        run(`icacls $exe /grant "*S-1-1-0:(RX)"`)
+        _windows_acl_fixed[] = true
+    end
+    return dir
 end
 
 """
