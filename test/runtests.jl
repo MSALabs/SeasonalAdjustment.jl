@@ -42,6 +42,10 @@ import TSAnalytics  # W.9: `using SeasonalAdjustment` does NOT bring the
     include("test_book_examples.jl") # Introduction book -- asserts the premises
                                     # of the worked examples behind each chapter's
                                     # figures and numbers (currently: Chapter 9)
+    include("test_manual_examples.jl") # the task-oriented Manual -- asserts its
+                                    # own genuinely new claims (batch diagnostics,
+                                    # the run_x13_batch/.udg gotcha, the
+                                    # duplicate-regressor-name spec error, TimeArray)
 
     # Extended suite (R/Python-cross-validated extreme cases) -- opt-in
     # only, see test/extended/runtests.jl's own module comment. Kept out

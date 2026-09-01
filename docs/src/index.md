@@ -124,9 +124,12 @@ There are a few ways to get started with SeasonalAdjustment.jl:
   [Why Adjust?](introduction/01-why-adjust.md) first. The *Introduction*
   is written to be readable without Julia in front of you.
 - If you are migrating from R's `seasonal` or from
-  `statsmodels.tsa.x13`, start with the [API Reference](api.md). Most
-  function docstrings name their R and Python counterparts and note
-  where behaviour deliberately differs.
+  `statsmodels.tsa.x13`, start with the
+  [Manual's own translation page](manual/04-coming-from-r-python.md).
+  Most function docstrings also name their R and Python counterparts.
+- Already know what you want to do and just need the one worked call
+  for it? The [Manual](manual/01-specifications.md) is organised as
+  "how do I ..." tasks, not a walkthrough.
 
 !!! tip "Help us improve"
     If you hit an unclear error message, confusing behaviour, or a gap
@@ -142,6 +145,11 @@ A high-level view of the layout will help you know where to look.
 - **[Getting Started](getting-started/01-installation.md)** is a guided
   path from installation to a checked adjustment, using one dataset and
   one thread. Start here if you want to use the package.
+
+- **[Manual](manual/01-specifications.md)** answers "how do I ...?" for
+  a specific task -- specs, output tables, batch runs, calendars,
+  plotting, R/Python migration -- one worked call per page, not a
+  walkthrough. Start here once you know what you're trying to do.
 
 - **[Introduction to Seasonal Adjustment](introduction/01-why-adjust.md)**
   explains the subject: what X-11 does with its three passes, why a

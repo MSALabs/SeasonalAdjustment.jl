@@ -11,6 +11,18 @@ const PAGES = [
         "getting-started/04-beyond-defaults.md",
         "getting-started/05-where-next.md",
     ],
+    "Manual" => [
+        "manual/01-specifications.md",
+        "manual/02-output-tables.md",
+        "manual/03-batch-processing.md",
+        "manual/04-coming-from-r-python.md",
+        "manual/05-calendars-regressors.md",
+        "manual/06-plots.md",
+        "manual/07-datasets.md",
+        "manual/08-reproducibility.md",
+        "manual/09-running-x13-directly.md",
+        "manual/10-diagnostics-access.md",
+    ],
     "Introduction to Seasonal Adjustment" => [
         "introduction/01-why-adjust.md",
         "introduction/02-decomposition.md",
