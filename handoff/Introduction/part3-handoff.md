@@ -2,6 +2,20 @@
 
 ~18 pages, 12 figures. Chapter 9 has its own handoff and is already drafted.
 
+**Status: done.** See `book/src/introduction/10-trading-day.md` through
+`13-model-selection.md` and `test/test_book_examples.jl`'s "Chapters
+10-13" testset. Two real findings surfaced while building it, both
+documented in the chapter text itself: (1) a user regressor's name must
+NOT also appear in `regression_variables` -- `user = (name)` alone
+includes it, and duplicating the name breaks the spec; (2)
+`components(...; which=:user)` cannot retrieve `.usr` for a holiday-type
+user regressor under `automdl` because the real binary never writes that
+file for this configuration (confirmed by inspecting a run's own output
+directory) -- a genuine X-13 characteristic, not a package bug. Figure
+C-10 is reconstructed from the fitted coefficient instead. `INDIA_NSE`
+only covers 2024-2026 (3 years), so C-8/C-9/C-10 use that real range
+rather than a longer illustrative one.
+
 **Master:** `introduction-design.md`
 **Written after:** Chapter 9, Part II, Part V, Part I
 

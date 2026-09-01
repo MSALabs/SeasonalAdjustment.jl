@@ -278,7 +278,8 @@ deliver.
    technical chapters established. **Done** — see
    `book/src/introduction/01-why-adjust.md` through `03-origins.md`.
 5. **Chapters 10–13** — `iip_india` and `componentplot` both shipped; no
-   longer blocked.
+   longer blocked. **Done** — see `book/src/introduction/10-trading-day.md`
+   through `13-model-selection.md`.
 6. **Chapters 14–15** (Part IV) last.
 
 ---
