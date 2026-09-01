@@ -3,6 +3,21 @@
 ~9 pages, 6 figures. The last part written, and the one with the widest gap
 between what the reader needs and what the package can demonstrate.
 
+**Status: done — this was the book's 20th and final chapter.** See
+`book/src/introduction/14-decomposing-a-model.md`/`15-x11-vs-seats.md`
+and `test/test_book_examples.jl`'s "Chapters 14-15" testset. §7's open
+questions, answered directly: (1) component fields (`seasonally_adjusted`
+etc.) all populate for a SEATS run, confirmed. (2) D-2/D-3 shipped as
+labelled illustrative schematics, not derived — the real derivation is
+substantially harder than Part II's filter work and out of scope here.
+(3) `iip_india` supplies a real divergent case (>5% vs. airline's <3%),
+found by comparing every bundled dataset rather than designed. (4) kept
+the gap list (§6) out of the book prose, as recommended. (5) kept the
+original chapter order. One real correction to this handoff's own §3
+table: `seasonality_tests` does NOT work for SEATS (needs an X-11-only
+`.udg` key, `f2.fsb1`) — the table above said "yes"; checking directly
+found otherwise.
+
 **Master:** `introduction-design.md`
 **Written after:** everything else
 

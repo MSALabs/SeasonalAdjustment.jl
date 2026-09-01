@@ -280,7 +280,9 @@ deliver.
 5. **Chapters 10–13** — `iip_india` and `componentplot` both shipped; no
    longer blocked. **Done** — see `book/src/introduction/10-trading-day.md`
    through `13-model-selection.md`.
-6. **Chapters 14–15** (Part IV) last.
+6. **Chapters 14–15** (Part IV) last. **Done** — see
+   `book/src/introduction/14-decomposing-a-model.md`/`15-x11-vs-seats.md`.
+   **All 20 chapters plus Appendix A are now complete and published.**
 
 ---
 

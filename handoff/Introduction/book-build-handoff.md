@@ -291,17 +291,24 @@ rather than raw SVG if that turns out to be a problem.
 
 ## 7. Writing and build order
 
-| Phase | Content | Gated on |
+| Phase | Content | Status |
 |---|---|---|
 | 1 | Getting Started, 5 chapters, 8 figures | done |
 | 2 | Chapter 9 | done |
-| 3 | Chapters 4–8 (Part II) + `derivations.jl` | B-12 dataset for one figure |
-| 4 | Chapters 16–19 (Part V) | — |
-| 5 | Chapters 1–3 (Part I) | — |
-| 6 | Chapters 10–13 (Part III) | — |
-| 7 | Chapters 14–15 (Part IV) | — |
-| 8 | Chapter 20 | — |
-| 9 | Home page, appendices | everything above settled |
+| 3 | Chapters 4–8 (Part II) + `derivations.jl` | done (B-12 shipped as a labelled synthetic schematic, no near-zero dataset exists) |
+| 4 | Chapters 16–19 (Part V) | done |
+| 5 | Chapters 1–3 (Part I) | done |
+| 6 | Chapters 10–13 (Part III) | done |
+| 7 | Chapters 14–15 (Part IV) | done |
+| 8 | Chapter 20 | done |
+| 9 | Home page, appendices | done (Home already existed from earlier work; Appendix A shipped with Part V) |
+
+**All twenty chapters plus Appendix A are complete and published** on the
+live Documenter site under "Introduction to Seasonal Adjustment." The only
+still-open items are B-12 and D-6's own original dataset requests
+(near-zero/zero-crossing, divergent) -- D-6 was resolved for real with
+`iip_india` (a genuine, found-not-designed divergence); B-12 remains a
+labelled schematic pending a real near-zero series.
 
 Phase 1 proves the whole pipeline end to end on eight figures before 52 more
 depend on it. Phase 3 produces `derivations.jl`, which is also the first real
