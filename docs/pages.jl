@@ -12,6 +12,12 @@ const PAGES = [
         "introduction/07-bcd-tables.md",
         "introduction/08-extreme-values-modes.md",
         "introduction/09-end-of-series.md",
+        "introduction/16-why-so-many-diagnostics.md",
+        "introduction/17-m-statistics.md",
+        "introduction/18-residual-seasonality.md",
+        "introduction/19-model-adequacy.md",
+        "introduction/20-stability-revisions.md",
+        "introduction/A-checklist.md",
     ],
     "API Reference" => "api.md",
 ]

@@ -116,6 +116,38 @@ if x13_binary_available()
         # claim no longer reproduces.
         @test rev_ext.mean_abs_pct < rev_noext.mean_abs_pct
     end
+
+    @testset "Chapters 17-19 -- canonical airline spec, the QS-vs-spectrum disagreement" begin
+        res = x13(dataset("airline"); automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto)
+        m = mstats(res)
+        @test all(getfield(m, f) < 1.0 for f in (:m1, :m2, :m3, :m4, :m5, :m6, :m7, :m8, :m9, :m10, :m11))
+        @test m.q < 1.0
+
+        q = qs(res)
+        @test q.original.pvalue < 0.01     # strongly seasonal before adjustment
+        @test q.sa.pvalue > 0.99           # QS reports essentially no seasonality left...
+
+        peaks = spectrum_peaks(res.udg; series = :sa)
+        s1 = only(filter(x -> x.label == :s1, peaks))
+        @test s1.significant               # ...yet the spectrum still flags a seasonal peak.
+        # This is Chapter 18's central point: both diagnostics are correct and they disagree.
+
+        rd = residual_diagnostics(res)
+        @test rd.n_ljung_box > 0            # the model that produced the clean Q above still
+                                             # fails Ljung-Box at some lag (Chapter 19)
+    end
+
+    @testset "Chapter 20 -- appliance sliding spans and revision history are real, populated" begin
+        res = x13(dataset("appliance"); automdl = true, outlier = true, transform = :auto,
+            spec_args = Dict("slidingspans" => "", "history.estimates" => "(sadj sadjchng)"))
+        ss = slidingspans(res)
+        @test ss !== nothing
+        @test 0 <= ss.seasonal_pct <= 100
+        rh = revision_history(res)
+        @test rh !== nothing
+        @test !isempty(rh.sa_estimates)
+        @test all(>=(0), rh.sa_estimates)   # average absolute revisions are non-negative
+    end
 else
     @warn "skipping real-binary book-example tests: x13_binary_available() is false in this environment"
 end
