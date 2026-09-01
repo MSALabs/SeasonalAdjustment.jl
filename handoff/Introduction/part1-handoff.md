@@ -2,6 +2,16 @@
 
 ~12 pages, 6 figures. Written **fourth**, after Chapter 9, Part II and Part V.
 
+**Status: done.** See `book/src/introduction/01-why-adjust.md` through
+`03-origins.md` and `test/test_book_examples.jl`'s "Chapters 1-2" testset.
+Chapter 3's historical claims were verified via web search before writing
+(§4's own instruction) -- two real corrections came out of that: "Estela
+Bee Dagum" not "Estella" (a misspelling this project's own Chapter 9 had
+already introduced, fixed there too), and "Julius Shiskin" not "Julian"
+(one secondary source has it wrong). The "X-11 = eleventh variant" story
+could not be traced to a primary source and is left out, with a boxed note
+explaining why rather than silently dropped.
+
 **Master:** `introduction-design.md`
 
 ---

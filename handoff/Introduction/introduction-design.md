@@ -275,7 +275,8 @@ deliver.
    **Done** — see `book/src/introduction/16-why-so-many-diagnostics.md`
    through `20-stability-revisions.md` and `A-checklist.md`.
 4. **Chapters 1–3** (Part I) — after II and V, so the framing reflects what the
-   technical chapters established.
+   technical chapters established. **Done** — see
+   `book/src/introduction/01-why-adjust.md` through `03-origins.md`.
 5. **Chapters 10–13** — `iip_india` and `componentplot` both shipped; no
    longer blocked.
 6. **Chapters 14–15** (Part IV) last.
