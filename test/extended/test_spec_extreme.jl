@@ -119,11 +119,20 @@ end
 
     # Rule 3: regression_user must cover series length + 12-month
     # forecast horizon -- boundary at exactly n+12, n+11 (fails), n+13
-    # (passes with margin).
+    # (passes with margin). transform=:log on all three: a bare
+    # regression_user already creates a regression block, and the
+    # default x11_mode is :multiplicative, so without an explicit
+    # transform every one of these would instead trip Rule 4 (RegARIMA
+    # + multiplicative needs an explicit transform) -- confirmed
+    # directly (the n+12/n+13 cases errored with Rule 4's own message,
+    # not a test failure, and the n+11 case's `@test_throws
+    # ArgumentError` was passing for the wrong reason, silently not
+    # exercising Rule 3's boundary at all). transform=:log isolates
+    # Rule 3 so all three cases test what they claim to.
     n = 48
-    @test X13Spec(y48[1:n]; regression_user = collect(1.0:(n+12))) isa X13Spec
-    @test_throws ArgumentError X13Spec(y48[1:n]; regression_user = collect(1.0:(n+11)))
-    @test X13Spec(y48[1:n]; regression_user = collect(1.0:(n+13))) isa X13Spec
+    @test X13Spec(y48[1:n]; regression_user = collect(1.0:(n+12)), transform = :log) isa X13Spec
+    @test_throws ArgumentError X13Spec(y48[1:n]; regression_user = collect(1.0:(n+11)), transform = :log)
+    @test X13Spec(y48[1:n]; regression_user = collect(1.0:(n+13)), transform = :log) isa X13Spec
 
     # Rule 4: transform=:log required when a regression block is
     # combined with x11_mode in (:multiplicative, :logadditive) -- each
