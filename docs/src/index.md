@@ -21,9 +21,10 @@ native Julia engine hasn't started yet.
 
 - New to the package? Start with [Getting Started](getting_started.md).
 - Want to understand what X-13 is actually doing, not just how to run it?
-  See [Introduction to Seasonal Adjustment](introduction/04-x11-by-hand.md)
-  (a work in progress -- currently covers the X-11 method and the
-  end-of-series problem; more chapters are being added).
+  See [Introduction to Seasonal Adjustment](introduction/01-why-adjust.md)
+  (a work in progress -- currently covers the foundations, the X-11 method,
+  the end-of-series problem, and diagnostics; more chapters are being
+  added).
 - Looking for a specific function? See the [API Reference](api.md).
 
 ## Design principles

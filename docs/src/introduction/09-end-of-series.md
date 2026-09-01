@@ -45,7 +45,7 @@ different "official" values, depending on when you asked.
 
 ## 9.4 Dagum's fix
 
-Estella Bee Dagum, working at Statistics Canada, published X-11-ARIMA in 1980
+Estela Bee Dagum, working at Statistics Canada, published X-11-ARIMA in 1980
 with an answer to this that is almost embarrassingly simple to state: if the
 problem is that the future has not arrived yet, forecast it.
 

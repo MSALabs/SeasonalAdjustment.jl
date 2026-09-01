@@ -6,6 +6,9 @@ const PAGES = [
     "Home" => "index.md",
     "Getting Started" => "getting_started.md",
     "Introduction to Seasonal Adjustment" => [
+        "introduction/01-why-adjust.md",
+        "introduction/02-decomposition.md",
+        "introduction/03-origins.md",
         "introduction/04-x11-by-hand.md",
         "introduction/05-trend-filters.md",
         "introduction/06-seasonal-filters.md",
