@@ -20,6 +20,8 @@ diagnostics, plotting, bundled datasets) is complete. A from-scratch
 native Julia engine hasn't started yet.
 
 - New to the package? Start with [Getting Started](getting_started.md).
+- Want to understand what X-13 is actually doing, not just how to run it?
+  See [Introduction to Seasonal Adjustment](introduction/09-end-of-series.md).
 - Looking for a specific function? See the [API Reference](api.md).
 
 ## Design principles
