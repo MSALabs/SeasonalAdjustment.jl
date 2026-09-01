@@ -13,6 +13,12 @@ makedocs(;
         canonical = "https://MSALabs.github.io/SeasonalAdjustment.jl",
         edit_link = "main",
         assets = String[],
+        # Sidebar defaults to collapsed except for whichever section is
+        # currently active (Documenter auto-expands the active page's own
+        # branch regardless of this setting) -- landing on Home therefore
+        # shows Home expanded and every other section collapsed to just
+        # its label, exactly the requested landing state.
+        collapselevel = 1,
     ),
     pages = PAGES,
     # doctest=:fix locally regenerates expected doctest output when you
