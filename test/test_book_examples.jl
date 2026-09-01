@@ -169,6 +169,49 @@ if x13_binary_available()
         @test !isempty(rh.sa_estimates)
         @test all(>=(0), rh.sa_estimates)   # average absolute revisions are non-negative
     end
+
+    @testset "Chapters 10-13 -- trading day, Diwali, COVID outliers, model selection" begin
+        res_appl_td = x13(dataset("appliance"); automdl = true, outlier = true, aictest = [:td], transform = :auto)
+        ftest_td = res_appl_td.udg["ftest\$Trading Day"]
+        fields = split(ftest_td)
+        @test parse(Float64, fields[3]) > 10.0   # strongly significant F-statistic
+        @test parse(Float64, fields[4]) < 0.01   # p-value
+
+        # Diwali: weekend-drop rule -- a holiday landing on a weekend must
+        # contribute 0.0, not 1.0, to the regressor.
+        function diwali_main_date(y)
+            entries = get(INDIA_NSE.table_holidays, y, nothing)
+            entries === nothing && return nothing
+            idx = findfirst(e -> occursin("Laxmi", e[2]), entries)
+            idx === nothing && return nothing
+            return entries[idx][1]
+        end
+        diwali_years = sort(collect(keys(INDIA_NSE.table_holidays)))
+        weekend_years = filter(y -> dayofweek(diwali_main_date(y)) in (6, 7), diwali_years)
+        @test !isempty(weekend_years)   # confirms the test actually exercises the rule
+        chr = custom_holiday_regressor(Date(minimum(diwali_years), 1, 1), Date(maximum(diwali_years), 12, 1),
+            INDIA_NSE, diwali_main_date; freq = :month)
+        for y in weekend_years
+            d = diwali_main_date(y)
+            month_idx = (Dates.year(d) - minimum(diwali_years)) * 12 + Dates.month(d)
+            @test chr[month_idx] == 0.0
+        end
+
+        # COVID on iip_india: a real, large, correctly-timed disruption.
+        res_iip = x13(dataset("iip_india"); transform = :log, automdl = true, outlier = true)
+        oc = outlier_counts(res_iip)
+        @test oc.total > 0
+        outl = outliers(res_iip)
+        @test any(o -> o.type == :ls && o.year == 2020, outl)   # a 2020 level shift
+
+        # automdl: the chosen model is not necessarily the best-BIC candidate.
+        res_air = x13(dataset("airline"); automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto)
+        fb = fivebestmdl(res_air)
+        @test length(fb) == 5
+        @test issorted([m.bic for m in fb])   # fivebestmdl's own list is BIC-sorted
+        best_bic_model = fb[1].model
+        @test replace(best_bic_model, " " => "") != replace(arima_model(res_air), " " => "")
+    end
 else
     @warn "skipping real-binary book-example tests: x13_binary_available() is false in this environment"
 end
