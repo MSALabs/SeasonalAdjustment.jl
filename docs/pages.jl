@@ -19,6 +19,8 @@ const PAGES = [
         "introduction/11-moving-holidays.md",
         "introduction/12-outliers.md",
         "introduction/13-model-selection.md",
+        "introduction/14-decomposing-a-model.md",
+        "introduction/15-x11-vs-seats.md",
         "introduction/16-why-so-many-diagnostics.md",
         "introduction/17-m-statistics.md",
         "introduction/18-residual-seasonality.md",

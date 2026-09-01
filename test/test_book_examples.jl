@@ -212,6 +212,33 @@ if x13_binary_available()
         best_bic_model = fb[1].model
         @test replace(best_bic_model, " " => "") != replace(arima_model(res_air), " " => "")
     end
+
+    @testset "Chapters 14-15 -- SEATS field availability, X-11 vs SEATS divergence" begin
+        res_seats = x13(dataset("airline"); seats = true, transform = :log, automdl = true)
+        @test length(res_seats.seasonally_adjusted) == length(res_seats.observed)
+        @test mstats(res_seats) === nothing
+        f = filters(res_seats)
+        @test f.trend_ma === nothing
+        @test isempty(f.seasonal_ma)
+        @test qs(res_seats) !== nothing
+        @test spectral_peaks(res_seats.udg) !== nothing
+        # A real correction to this book's own original plan: seasonality_tests
+        # needs an X-11-only .udg key (f2.fsb1) and returns nothing for SEATS,
+        # contrary to what was originally assumed before checking directly.
+        @test seasonality_tests(res_seats.udg) === nothing
+
+        d_air = dataset("airline")
+        res_x11 = x13(d_air; automdl = true, transform = :auto)
+        res_seats2 = x13(d_air; automdl = true, transform = :auto, seats = true)
+        diff_air = abs.(res_x11.seasonally_adjusted .- res_seats2.seasonally_adjusted) ./ res_x11.seasonally_adjusted
+        @test maximum(diff_air) < 0.05   # close agreement on airline
+
+        d_iip = dataset("iip_india")
+        res_iip_x11 = x13(d_iip; automdl = true, transform = :auto)
+        res_iip_seats = x13(d_iip; automdl = true, transform = :auto, seats = true)
+        diff_iip = abs.(res_iip_x11.seasonally_adjusted .- res_iip_seats.seasonally_adjusted) ./ res_iip_x11.seasonally_adjusted
+        @test maximum(diff_iip) > maximum(diff_air)   # a genuinely larger divergence than airline's
+    end
 else
     @warn "skipping real-binary book-example tests: x13_binary_available() is false in this environment"
 end
