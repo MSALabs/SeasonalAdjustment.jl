@@ -1,11 +1,90 @@
 # test_book_examples.jl -- asserts the premises of the book's own worked
-# examples, not merely eyeballing them once at figure-generation time. Gated
-# on x13_binary_available() -- these are real-binary runs, same convention as
-# test_w7.jl.
+# examples, not merely eyeballing them once at figure-generation time.
+# Pure-math checks (derivations.jl, ch04.jl's toy_x11) run unconditionally;
+# real-binary cross-checks are gated on x13_binary_available(), same
+# convention as test_w7.jl.
 
+include(joinpath(@__DIR__, "..", "book", "examples", "derivations.jl"))
+include(joinpath(@__DIR__, "..", "book", "examples", "ch04.jl"))
+include(joinpath(@__DIR__, "..", "book", "examples", "ch06.jl"))
 include(joinpath(@__DIR__, "..", "book", "examples", "ch09.jl"))
 
+@testset "Chapter 5 -- Henderson weights, pure math" begin
+    for n in (9, 13, 23)
+        w = henderson_weights(n)
+        @test length(w) == n
+        @test isapprox(sum(w), 1.0; atol = 1e-10)
+        @test all(isapprox(w[i], w[end+1-i]; atol = 1e-12) for i in eachindex(w))  # symmetric
+    end
+    # The commonly published 9-term table (Ladiray & Quenneville), to 3 dp --
+    # this is the check that caught a real bug: an earlier closed-form
+    # denominator gave weights summing to 1.75, not 1.
+    h9 = henderson_weights(9)
+    published = [-0.041, -0.010, 0.119, 0.267, 0.331, 0.267, 0.119, -0.010, -0.041]
+    @test all(isapprox.(h9, published; atol = 2e-3))
+end
+
+@testset "Chapter 5 -- asymmetric end weights, pure math" begin
+    for r in 0:3
+        w = asymmetric_end_weights(9, r)
+        @test length(w) == 4 + r + 1
+        @test isapprox(sum(w), 1.0; atol = 1e-8)   # level-preserving
+    end
+    # More skewed toward the most recent point as fewer future obs remain:
+    # the last (most recent) weight should grow as r shrinks.
+    last_weights = [asymmetric_end_weights(9, r)[end] for r in 0:3]
+    @test issorted(last_weights; rev = true)
+end
+
+@testset "Chapter 6 -- seasonal filter weights, pure math" begin
+    w33 = seasonal_filter_weights((3, 3))
+    w35 = seasonal_filter_weights((3, 5))
+    w39 = seasonal_filter_weights((3, 9))
+    @test length(w33) == 5   # 3+3-1 years span
+    @test length(w35) == 7
+    @test length(w39) == 11
+    for w in (w33, w35, w39)
+        @test isapprox(sum(w), 1.0; atol = 1e-10)
+    end
+    # Gain at frequency 0 must be 1 for every filter in the family (none of
+    # them touch the series' overall level).
+    for w in (w33, w35, w39)
+        @test isapprox(gain(w, [0.0])[1], 1.0; atol = 1e-10)
+    end
+end
+
+@testset "Chapter 4 -- toy X-11, pure math" begin
+    y = 100.0 .+ 10.0 .* sin.(2π .* (1:120) ./ 12) .+ (1:120) .* 0.5
+    t4 = toy_x11(y)
+    @test length(t4.seasonal_history) == 3
+    # The real bug this session found: dividing the RUNNING sa (not the
+    # original y) by the trend each pass causes the seasonal estimate to
+    # oscillate -- pass 2 collapses toward flat, pass 3 jumps back to
+    # matching pass 1. With the fix, passes should be close to each other,
+    # not alternating between two different shapes.
+    p1, p2, p3 = t4.seasonal_history
+    @test maximum(abs.(p1[1:12] .- p3[1:12])) < 0.05
+    @test maximum(abs.(p2[1:12] .- p3[1:12])) < 0.05
+    # Seasonal factors must average to 1 over a full cycle (normalisation).
+    @test isapprox(sum(t4.seasonal_history[end][1:12]) / 12, 1.0; atol = 1e-8)
+end
+
 if x13_binary_available()
+    @testset "Chapter 5 -- Henderson-9 reproduces real D12 closely" begin
+        d = dataset("airline")
+        res = x13(d)
+        h9 = henderson_weights(9)
+        computed = apply_symmetric_filter(res.seasonally_adjusted, h9)
+        errs = Float64[abs(computed[t] - res.trend[t]) / abs(res.trend[t])
+                        for t in eachindex(computed) if computed[t] !== missing]
+        @test !isempty(errs)
+        # Confirmed directly: mean ~0.6%, max ~2.2% -- the residual gap is
+        # real X-11 extreme-value handling this simplified filter doesn't
+        # replicate, not a wrong formula (see derivations.jl's own docstring).
+        @test sum(errs) / length(errs) < 0.02
+        @test maximum(errs) < 0.05
+    end
+
     @testset "Chapter 9 -- end-of-series vintages" begin
         v_noext = ch09_vintages(; extend = false)
         v_ext = ch09_vintages(; extend = true)
@@ -38,5 +117,5 @@ if x13_binary_available()
         @test rev_ext.mean_abs_pct < rev_noext.mean_abs_pct
     end
 else
-    @warn "skipping book-example tests: x13_binary_available() is false in this environment"
+    @warn "skipping real-binary book-example tests: x13_binary_available() is false in this environment"
 end

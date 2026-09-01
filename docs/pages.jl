@@ -6,6 +6,11 @@ const PAGES = [
     "Home" => "index.md",
     "Getting Started" => "getting_started.md",
     "Introduction to Seasonal Adjustment" => [
+        "introduction/04-x11-by-hand.md",
+        "introduction/05-trend-filters.md",
+        "introduction/06-seasonal-filters.md",
+        "introduction/07-bcd-tables.md",
+        "introduction/08-extreme-values-modes.md",
         "introduction/09-end-of-series.md",
     ],
     "API Reference" => "api.md",
