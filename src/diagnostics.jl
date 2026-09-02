@@ -162,6 +162,18 @@ through the real binary with `udg=true` and inspecting the result:
 | anything else | `nothing` | never guess |
 
 Reused by [`static`](@ref) rather than duplicated.
+
+# Examples
+```jldoctest
+julia> transformfunction(Dict("aictrans" => "Log(y)", "transform" => "Automatic selection"))
+:log
+
+julia> transformfunction(Dict("transform" => "No transformation"))
+:none
+
+julia> transformfunction(Dict("nreg" => "3")) === nothing
+true
+```
 """
 function transformfunction(d::AbstractDict)
     get(d, "aictrans", "") == "Log(y)" && return :log
@@ -176,6 +188,12 @@ end
 
 The ARIMA model actually used (e.g. `"(0 1 1)(0 1 1)"`), from `arimamdl`
 -- whether it came from `automdl` or was already explicit.
+
+# Examples
+```jldoctest
+julia> arima_model(Dict("arimamdl" => "(0 1 1)(0 1 1)"))
+"(0 1 1)(0 1 1)"
+```
 """
 arima_model(d::AbstractDict) = get(d, "arimamdl", nothing)
 
@@ -191,6 +209,31 @@ diagnostic, with no SEATS equivalent). Also confirmed directly for a
 quarterly spec: `f3.m01`-`f3.m11` still has all 11 entries regardless of
 `period` -- only [`filters`](@ref)'s `seasonal_ma` scales with `period`
 (4 entries for quarterly, 12 for monthly), M-statistics do not.
+
+Each ``M_i`` is scaled to the range ``[0, 3]``, and the overall quality
+statistic ``Q`` is a weighted combination of all eleven. The Census
+Bureau's own published convention (X-11-ARIMA/2000 documentation) is
+that ``Q < 1.0`` indicates an acceptable adjustment; this package does
+not itself apply that threshold anywhere -- it is stated here purely
+for interpreting the returned value, not enforced as a pass/fail rule.
+
+# Examples
+```jldoctest
+julia> d = Dict("f3.m01" => "0.041", "f3.m02" => "0.042", "f3.m03" => "0.000",
+                 "f3.m04" => "0.283", "f3.m05" => "0.190", "f3.m06" => "0.703",
+                 "f3.m07" => "0.203", "f3.m08" => "0.418", "f3.m09" => "0.368",
+                 "f3.m10" => "0.431", "f3.m11" => "0.418", "f3.q" => "0.20",
+                 "f3.qm2" => "0.22", "f3.fail" => "0");
+
+julia> mstats(d).q
+0.2
+
+julia> mstats(d).fail
+0
+
+julia> mstats(Dict("nreg" => "3")) === nothing
+true
+```
 """
 function mstats(d::AbstractDict)
     haskey(d, "f3.q") || return nothing
@@ -221,6 +264,33 @@ QS test for seasonality, before and after adjustment. Mirrors R's
 Deliberately does NOT expose the `qss*` (extreme-value-adjusted) and
 `*evadj` variants at this level -- still reachable via `udg(r, "qssori")`
 etc.
+
+The QS statistic is a Ljung-Box-style portmanteau test restricted to
+the autocorrelations at the seasonal lag and its first harmonic (lag
+``s`` and ``2s``, e.g. 12 and 24 for a monthly series), rather than a
+whole run of consecutive lags:
+
+```math
+QS = n(n+2)\\left(\\frac{\\hat{\\rho}_s^2}{n-s} + \\frac{\\hat{\\rho}_{2s}^2}{n-2s}\\right)
+```
+
+Under the null of no residual seasonality, ``QS`` is asymptotically
+``\\chi^2_2``-distributed; a small `pvalue` is evidence that seasonality
+remains in that series.
+
+# Examples
+```jldoctest
+julia> d = Dict("qsori" => "167.64858    0.00000", "qssadj" => "0.00000    1.00000");
+
+julia> qs(d; which=:original)
+(statistic = 167.64858, pvalue = 0.0)
+
+julia> qs(d; which=:sa)
+(statistic = 0.0, pvalue = 1.0)
+
+julia> qs(d; which=:residual) === nothing
+true
+```
 """
 function qs(d::AbstractDict; which::Symbol = :all)
     if which === :all
@@ -279,6 +349,18 @@ integer) -- left unresolved rather than guessed.
 | `true` | above plus `estimate=`, `stderror=`, `tstat=` |
 
 Type symbols: `:ao`, `:ls`, `:tc`, `:rp`, `:so`, `:tls`.
+
+# Examples
+```jldoctest
+julia> d = Dict(raw"AutoOutlier\$AO1951.May" => "+0.100155824411322E+00 +0.204386646810968E-01 +0.490031154060440E+01");
+
+julia> outliers(d)
+1-element Vector{NamedTuple}:
+ (label = "AO1951.May", type = :ao, year = 1951, period = 5)
+
+julia> outliers(d; full=true)[1].estimate
+0.100155824411322
+```
 """
 function outliers(d::AbstractDict; full::Bool = false)
     out = NamedTuple[]
@@ -314,6 +396,16 @@ end
 `.rp`/`.so`/`.tls`/`.total`. Each field is `nothing` if that key is
 absent (e.g. `outlier=false` was passed, so no outlier detection ran at
 all).
+
+# Examples
+```jldoctest
+julia> d = Dict("outlier.ao" => "1", "outlier.ls" => "0", "outlier.tc" => "0",
+                 "outlier.rp" => "0", "outlier.so" => "0", "outlier.tls" => "0",
+                 "outlier.total" => "1");
+
+julia> outlier_counts(d)
+(ao = 1, ls = 0, tc = 0, rp = 0, so = 0, tls = 0, total = 1)
+```
 """
 outlier_counts(d::AbstractDict) = (
     ao = _udg_int(d, "outlier.ao"), ls = _udg_int(d, "outlier.ls"),
@@ -329,6 +421,26 @@ outlier_counts(d::AbstractDict) = (
 `automdl.best5.mdl01`-`05`/`automdl.best5.bic01`-`05`. `nothing` when
 `automdl` didn't run (no `automdl.best5.mdl01` key at all). Stops at the
 first missing index rather than assuming five are always present.
+
+`bic` is Schwarz's Bayesian Information Criterion,
+``\\mathrm{BIC} = -2\\ell + k\\log n`` for log-likelihood ``\\ell``,
+``k`` estimated parameters and ``n`` effective observations -- the
+lowest `bic` in the list is the model `automdl` actually selected
+(rank 1, first in the vector).
+
+# Examples
+```jldoctest
+julia> d = Dict("automdl.best5.mdl01" => "(0 1 0)(0 1 1)", "automdl.best5.bic01" => "-4.007",
+                 "automdl.best5.mdl02" => "(1 1 1)(0 1 1)", "automdl.best5.bic02" => "-3.986");
+
+julia> fivebestmdl(d)
+2-element Vector{NamedTuple}:
+ (model = "(0 1 0)(0 1 1)", bic = -4.007)
+ (model = "(1 1 1)(0 1 1)", bic = -3.986)
+
+julia> fivebestmdl(Dict("nreg" => "3")) === nothing
+true
+```
 """
 function fivebestmdl(d::AbstractDict)
     haskey(d, "automdl.best5.mdl01") || return nothing
@@ -352,6 +464,19 @@ identifiable=)`, each a plain `(F_or_stat, pvalue)` tuple except
 `identifiable::Bool` (from `f2.idseasonal`, `"yes"`/`"no"`). `nothing` if
 `f2.fsb1` itself is absent. Nothing in R's `seasonal` exposes these as a
 function -- a genuine addition, not just parity.
+
+# Examples
+```jldoctest
+julia> d = Dict("f2.fsb1" => "164.889    0.00", "f2.fsd8" => "215.358    0.00",
+                 "f2.kw" => "132.948    0.00", "f2.msf" => "3.557    0.02",
+                 "f2.idseasonal" => "yes");
+
+julia> seasonality_tests(d).stable_f
+(164.889, 0.0)
+
+julia> seasonality_tests(d).identifiable
+true
+```
 """
 function seasonality_tests(d::AbstractDict)
     haskey(d, "f2.fsb1") || return nothing
@@ -369,6 +494,38 @@ end
 n_sig_acf=, n_sig_pacf=)`. `ljung_box` is the full lag-indexed table
 (`[(lag=, statistic=, df=, pvalue=), …]`, from `lbq\$NN`/`lblags`), not a
 single value -- the raw `.udg` data itself is lag-indexed, not scalar.
+
+`durbin_watson` tests for first-order residual autocorrelation,
+
+```math
+DW = \\frac{\\sum_{t=2}^{n}(e_t - e_{t-1})^2}{\\sum_{t=1}^{n} e_t^2}
+```
+
+with ``DW \\approx 2`` indicating no autocorrelation, ``DW < 2``
+positive autocorrelation and ``DW > 2`` negative autocorrelation.
+`ljung_box`'s own statistic at each lag ``m`` is
+
+```math
+Q(m) = n(n+2)\\sum_{k=1}^{m}\\frac{\\hat{\\rho}_k^2}{n-k}
+```
+
+asymptotically ``\\chi^2`` under the null of no autocorrelation up to
+lag ``m``.
+
+# Examples
+```jldoctest
+julia> d = Dict("durbinwatson" => "0.19503780E+01", "skewness" => "0.0900", "kurtosis" => "3.0698",
+                 "nlbq" => "2", "nsigacf" => "2", "nsigpacf" => "2", "lblags" => "3 4",
+                 raw"lbq\$03" => "6.813       1      0.009", raw"lbq\$04" => "7.089       2      0.029");
+
+julia> residual_diagnostics(d).durbin_watson
+1.950378
+
+julia> residual_diagnostics(d).ljung_box
+2-element Vector{NamedTuple}:
+ (lag = 3, statistic = 6.813, df = 1.0, pvalue = 0.009)
+ (lag = 4, statistic = 7.089, df = 2.0, pvalue = 0.029)
+```
 """
 residual_diagnostics(d::AbstractDict) = (
     durbin_watson = _udg_float(d, "durbinwatson"), skewness = _udg_float(d, "skewness"),
@@ -386,6 +543,17 @@ series (`:ori`/`:sa`/`:rsd`/`:irr`) show a visually significant peak, from
 `"none"`. This is what R's own summary output (and what the Python
 reference pipeline scraped out of the HTML report as
 `trading_day_peak_warning`) reduces to.
+
+# Examples
+```jldoctest
+julia> d = Dict("peaks.seas" => "rsd sa", "peaks.td" => "sa irr");
+
+julia> spectral_peaks(d)
+(seasonal = [:rsd, :sa], trading_day = [:sa, :irr])
+
+julia> spectral_peaks(Dict("peaks.seas" => "none"))
+(seasonal = Symbol[], trading_day = Symbol[])
+```
 """
 function spectral_peaks(d::AbstractDict)
     parse_list(key) = begin
@@ -408,6 +576,22 @@ it isn't purely numeric); `mode` a `Symbol` (`:multiplicative` etc.,
 from `finmode`). Empty for a SEATS spec (confirmed directly: SEATS uses
 no X-11-style seasonal-MA filter at all, so `finaltrendma`/`seasonalma`
 are simply absent from a SEATS `.udg`).
+
+# Examples
+```jldoctest
+julia> d = Dict("seasonalma" => "MSR MSR MSR MSR MSR MSR MSR MSR MSR MSR MSR MSR",
+                 "finaltrendma" => "9", "finmode" => "multiplicative",
+                 "samode" => "auto-mode seasonal adjustment", "finalur" => "none");
+
+julia> filters(d).trend_ma
+9
+
+julia> filters(d).mode
+:multiplicative
+
+julia> length(filters(d).seasonal_ma)
+12
+```
 """
 function filters(d::AbstractDict)
     sma = get(d, "seasonalma", nothing)
@@ -432,6 +616,15 @@ the committed fixture, vs. `StatsAPI.nobs`'s 144) -- distinct from plain
 residual series is shorter than `r.observed`/`r.dates` by exactly that
 difference, confirmed directly against the fixture (144-131=13 fewer
 residual observations than the original series).
+
+# Examples
+```jldoctest
+julia> nobs_effective(Dict("nefobs" => "131"))
+131
+
+julia> nobs_effective(Dict("nreg" => "3")) === nothing
+true
+```
 """
 nobs_effective(d::AbstractDict) = _udg_int(d, "nefobs")
 
@@ -465,6 +658,20 @@ series has any significant peak at all, not which frequency -- this is
 the finer-grained data `spectrumplot` needs for its frequency
 markers, deferred out of the plain diagnostics-accessor scope for
 exactly this.
+
+# Examples
+```jldoctest
+julia> d = Dict("s1.freq" => "0.08333333", "t1.freq" => "0.34820000",
+                 "spcsa.s1" => "8.5 +", "spcori.s1" => "21.0 +");
+
+julia> spectrum_peaks(d; series=:sa)
+1-element Vector{NamedTuple}:
+ (label = :s1, freq = 0.08333333, significant = true)
+
+julia> spectrum_peaks(d; series=:original)
+1-element Vector{NamedTuple}:
+ (label = :s1, freq = 0.08333333, significant = true)
+```
 """
 function spectrum_peaks(d::AbstractDict; series::Symbol = :sa)
     haskey(_SPECTRUM_UDG_PREFIX, series) || throw(ArgumentError(
