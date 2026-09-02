@@ -136,6 +136,39 @@ Reference Manual alone) -- see `_FORCE_TYPE_KEYWORDS`/
 `_FORCE_TARGET_KEYWORDS`/`_SEASONALMA_KEYWORDS`. `force_target`'s real
 spelling is `:calendaradj`, not `:caladjust` as an earlier draft
 guessed -- the binary's own error message settled it.
+
+# Examples
+```jldoctest
+julia> y = collect(1.0:48.0) .+ 100;
+
+julia> spec = X13Spec(y; start=(2000, 1), automdl=true, outlier=true);
+
+julia> spec.period
+12
+
+julia> spec.automdl
+true
+
+julia> X13Spec(y; automdl=true, arima_model="(0 1 1)(0 1 1)")
+ERROR: ArgumentError: an explicit ARIMA model (arima_model/seasonal_order) and automdl (automdl/maxorder/maxdiff) can't both be given -- confirmed directly against the real binary's own error: "Cannot specify arima and automdl spec in the same input file."
+```
+
+Overriding a single field on an already-built spec, via the
+copy-constructor form:
+
+```jldoctest
+julia> y = collect(1.0:48.0) .+ 100;
+
+julia> base = X13Spec(y; automdl=true);
+
+julia> resolved = X13Spec(base; automdl=false, arima_model="(0 1 1)(0 1 1)");
+
+julia> resolved.arima_model
+"(0 1 1)(0 1 1)"
+
+julia> base.arima_model === nothing
+true
+```
 """
 function X13Spec(
     y::AbstractVector{<:Real};
@@ -261,6 +294,23 @@ preventing -- fast, native, BEFORE any subprocess round-trip:
    table actually belonged to) or, under the newer per-block routing,
    would have been silently dropped instead -- worse. Reject it up
    front, the same fast-fail convention every other rule here uses.
+
+Every `X13Spec` constructor already calls `validate!` before returning,
+so a spec reaching your code has already passed -- calling it again is
+a no-op that returns the same spec unchanged, useful mainly after
+directly assembling `spec_args` or otherwise wanting to re-check
+without a fresh construction.
+
+# Examples
+```jldoctest
+julia> spec = X13Spec(collect(1.0:36.0));
+
+julia> validate!(spec) === spec
+true
+
+julia> X13Spec(collect(1.0:35.0))
+ERROR: ArgumentError: series has 35 observations, but x13prebuilt requires at least 36 months (3 complete years) of data -- confirmed directly against the real binary's own error (identical wording for both period=12 and period=4, just scaled): "Series to be modelled and/or seasonally adjusted must have at least 3 complete years of data."
+```
 """
 function validate!(spec::X13Spec)
     spec.x11_mode === nothing || haskey(_X11_MODE_KEYWORDS, spec.x11_mode) || throw(ArgumentError(
@@ -554,6 +604,25 @@ Per-block routing rules:
    -- `spec_args` is a plain `Dict`, whose iteration order Julia does not
    guarantee, so sorting is what makes `render`'s output reproducible
    across runs.
+
+# Examples
+```jldoctest
+julia> spec = X13Spec(collect(1.0:48.0) .+ 100; automdl=true, outlier=true);
+
+julia> txt = render(spec);
+
+julia> occursin("series {", txt)
+true
+
+julia> occursin("automdl {", txt)
+true
+
+julia> occursin("outlier { }", txt)
+true
+
+julia> occursin("x11 {", txt)
+true
+```
 """
 function render(spec::X13Spec)
     save_by_block = _save_by_block(spec)
@@ -743,6 +812,19 @@ end
     write_spec(spec::X13Spec, path::AbstractString) -> String
 
 Renders and writes `spec` to `path`, returning `path`.
+
+# Examples
+```jldoctest
+julia> spec = X13Spec(collect(1.0:48.0) .+ 100; automdl=true);
+
+julia> path = write_spec(spec, joinpath(mktempdir(), "airline.spc"));
+
+julia> isfile(path)
+true
+
+julia> occursin("series {", read(path, String))
+true
+```
 """
 function write_spec(spec::X13Spec, path::AbstractString)
     write(path, render(spec))
@@ -759,6 +841,24 @@ adjusting a whole panel of series) -- `Threads.@threads`, guarded by
 `Threads.nthreads() > 1` and a minimum batch size, the same pattern used
 throughout this project family. `parallel=false` (or a single thread, or
 a small batch) falls back to a plain serial loop.
+
+# Examples
+```jldoctest
+julia> series_list = [collect(1.0:48.0) .+ 100, collect(1.0:60.0) .+ 200];
+
+julia> options_list = [(; automdl=true), (; arima_model="(0 1 1)(0 1 1)")];
+
+julia> specs = generate_specs(series_list, options_list; parallel=false);
+
+julia> length(specs)
+2
+
+julia> specs[1].automdl
+true
+
+julia> specs[2].arima_model
+"(0 1 1)(0 1 1)"
+```
 """
 function generate_specs(series_list::AbstractVector, options_list::AbstractVector; parallel::Bool = true)
     n = length(series_list)
