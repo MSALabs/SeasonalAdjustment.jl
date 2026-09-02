@@ -13,7 +13,18 @@
     easter_date(year) -> Date
 
 Easter Sunday for `year`, computed by BusinessDays.jl's own
-`easter_date`/`easter_rata` (not re-derived here).
+`easter_date`/`easter_rata` (not re-derived here) via the standard
+(Gauss/anonymous) Computus algorithm for the date of the first Sunday
+following the first ecclesiastical full moon on or after 21 March.
+
+# Examples
+```jldoctest
+julia> easter_date(2025)
+2025-04-20
+
+julia> easter_date(2026)
+2026-04-05
+```
 """
 easter_date(year::Integer) = BusinessDays.easter_date(Dates.Year(year))
 
@@ -21,6 +32,12 @@ easter_date(year::Integer) = BusinessDays.easter_date(Dates.Year(year))
     good_friday(year) -> Date
 
 Good Friday (Easter Sunday minus two days) for `year`.
+
+# Examples
+```jldoctest
+julia> SeasonalAdjustment.good_friday(2025)  # not exported -- qualify, or `using SeasonalAdjustment: good_friday`
+2025-04-18
+```
 """
 good_friday(year::Integer) = easter_date(year) - Day(2)
 
@@ -73,6 +90,15 @@ own single-argument `isweekend(dt::Date)` method hardcodes Saturday/
 Sunday for every calendar -- this per-calendar method is exactly the
 capability [`Calendar`](@ref)'s own docstring explains BusinessDays.jl
 can't express.
+
+# Examples
+```jldoctest
+julia> isweekend(INDIA_NSE, 6)  # Saturday
+true
+
+julia> isweekend(INDIA_NSE, 1)  # Monday
+false
+```
 """
 BusinessDays.isweekend(cal::Calendar, wd::Integer) = wd in cal.weekend
 
@@ -81,6 +107,20 @@ BusinessDays.isweekend(cal::Calendar, wd::Integer) = wd in cal.weekend
 
 `true` if `d` matches one of `cal`'s fixed-date holiday rules or its
 year-keyed moveable-holiday table. Extends `BusinessDays.isholiday`.
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> isholiday(INDIA_NSE, Date(2025, 8, 15))  # Independence Day, a fixed holiday
+true
+
+julia> isholiday(INDIA_NSE, Date(2025, 10, 21))  # Diwali-Laxmi Pujan, a moveable holiday
+true
+
+julia> isholiday(INDIA_NSE, Date(2025, 8, 14))
+false
+```
 """
 function BusinessDays.isholiday(cal::TableCalendar, d::Date)
     y = year(d)
@@ -96,6 +136,17 @@ end
 
 `true` unless `d` is a weekend (per `cal`'s own weekend set) or a
 holiday (per `cal`'s own fixed + table holidays).
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> isbusinessday(INDIA_NSE, Date(2025, 10, 21))  # Diwali-Laxmi Pujan
+false
+
+julia> isbusinessday(INDIA_NSE, Date(2025, 10, 20))
+true
+```
 """
 isbusinessday(cal::Calendar, d::Date) = !isweekend(cal, dayofweek(d)) && !isholiday(cal, d)
 
@@ -114,6 +165,20 @@ Standard business-day conventions (`:following`, `:preceding`,
 `:modified_following`, `:modified_preceding`, `:unadjusted`), applied
 to `d` under `cal`. Returns `d` unchanged if it's already a business
 day (or if `convention == :unadjusted`).
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> adjust(INDIA_NSE, Date(2025, 10, 21))  # Diwali-Laxmi Pujan, followed by Diwali-Balipratipada on the 22nd -- rolls to the 23rd
+2025-10-23
+
+julia> adjust(INDIA_NSE, Date(2025, 10, 21), :preceding)
+2025-10-20
+
+julia> adjust(INDIA_NSE, Date(2025, 10, 20))  # already a business day
+2025-10-20
+```
 """
 function adjust(cal::Calendar, d::Date, convention::Symbol = :following)
     convention === :unadjusted && return d
@@ -138,6 +203,17 @@ end
 
 Shifts `d` by the calendar `period` (e.g. `Dates.Month(1)`), then
 applies `adjust` with `convention` to the result.
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> advance(INDIA_NSE, Date(2025, 10, 20), Day(1))  # one calendar day forward, then adjusted
+2025-10-23
+
+julia> advance(INDIA_NSE, Date(2025, 9, 1), Month(1))
+2025-10-01
+```
 """
 advance(cal::Calendar, d::Date, period::Dates.Period, convention::Symbol = :following) =
     adjust(cal, d + period, convention)
@@ -146,6 +222,14 @@ advance(cal::Calendar, d::Date, period::Dates.Period, convention::Symbol = :foll
     businessdaysbetween(cal, from, to) -> Int
 
 Count of business days in the closed interval `[min(from,to), max(from,to)]`.
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> businessdaysbetween(INDIA_NSE, Date(2025, 10, 1), Date(2025, 10, 31))
+20
+```
 """
 function businessdaysbetween(cal::Calendar, from::Date, to::Date)
     lo, hi = min(from, to), max(from, to)
@@ -163,6 +247,20 @@ Errors loudly (`ArgumentError`) if any year spanned by the range has no
 `table_holidays` entry in `cal` -- silently falling back to fixed
 holidays only would look complete while quietly missing most of a
 real moveable-feast calendar.
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> holidaylist(INDIA_NSE, Date(2025, 10, 1), Date(2025, 10, 31))
+3-element Vector{Date}:
+ 2025-10-02
+ 2025-10-21
+ 2025-10-22
+
+julia> holidaylist(INDIA_NSE, Date(2030, 1, 1), Date(2030, 1, 31))
+ERROR: ArgumentError: No holiday table entry for year 2030 -- add it from the official NSE circular before using this calendar for that year
+```
 """
 function holidaylist(cal::TableCalendar, from::Date, to::Date; include_weekends::Bool = false)
     lo, hi = min(from, to), max(from, to)
@@ -259,6 +357,15 @@ end
 The Diwali Laxmi Pujan date for `year`, or `nothing` if `year` isn't in
 `NSE_MOVEABLE_HOLIDAYS`. A `holiday_years_present`-shaped
 callback for [`custom_holiday_regressor`](@ref).
+
+# Examples
+```jldoctest
+julia> SeasonalAdjustment.diwali_date(2025)  # not exported -- qualify, or `using SeasonalAdjustment: diwali_date`
+2025-10-21
+
+julia> SeasonalAdjustment.diwali_date(2030) === nothing
+true
+```
 """
 diwali_date(year::Integer) = _find_holiday(year, "laxmi pujan")
 
@@ -268,6 +375,12 @@ diwali_date(year::Integer) = _find_holiday(year, "laxmi pujan")
 The Holi date for `year`, or `nothing` if `year` isn't in
 `NSE_MOVEABLE_HOLIDAYS`. A `holiday_years_present`-shaped
 callback for [`custom_holiday_regressor`](@ref).
+
+# Examples
+```jldoctest
+julia> SeasonalAdjustment.holi_date(2025)  # not exported -- qualify, or `using SeasonalAdjustment: holi_date`
+2025-03-14
+```
 """
 holi_date(year::Integer) = _find_holiday(year, "holi")
 
@@ -333,6 +446,25 @@ columns for either `freq`, so it does not reproduce that extra column.
 Fine for feeding a *user*-defined regressor (X-13 doesn't require the
 extra column there), not a byte-for-byte replica of X-13's own internal
 quarterly `td` regressor.
+
+For weekday ``j`` (Monday=1..Saturday=6) in a given period,
+
+```math
+X_j = n_j - n_{\\text{Sun}}
+```
+
+where ``n_j`` is the count of business days falling on weekday ``j``
+within that period -- the standard trading-day contrast X-13 itself
+uses internally, with Sunday as the omitted reference category.
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> trading_day_regressors(Date(2025, 10, 1), Date(2025, 10, 31), INDIA_NSE)
+1×6 Matrix{Float64}:
+ 4.0  3.0  4.0  4.0  5.0  0.0
+```
 """
 function trading_day_regressors(from::Date, to::Date, cal::Calendar; freq::Symbol = :month)
     periods = _periods_for(freq, from, to)
@@ -363,6 +495,36 @@ particular value is assumed here either; pass an explicit `window`
 (commonly 1, 8, or 15 in practice). `freq=:quarter` confirmed directly
 against the real binary to work the same way as monthly (Easter always
 falls within Q1 or Q2, so at most one quarter per year is affected).
+
+For a period ``[p_1, p_2]`` and a ``w``-day window ending the day
+before Easter Sunday ``E``,
+
+```math
+\\text{value} = \\frac{\\left|[p_1, p_2] \\cap [E-w, E-1]\\right|}{w}
+```
+
+-- the fraction of the pre-Easter window that overlaps the period, so
+a period entirely inside the window scores `1.0`, one entirely outside
+it scores `0.0`, and a period the window only partly overlaps scores
+somewhere in between.
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> easter_regressor(Date(2025, 3, 1), Date(2025, 4, 30); window = 8)
+2-element Vector{Float64}:
+ 0.0
+ 1.0
+
+julia> easter_regressor(Date(2025, 1, 1), Date(2025, 1, 31); window = 8)  # January -- nowhere near Easter
+1-element Vector{Float64}:
+ 0.0
+
+julia> easter_regressor(Date(2025, 1, 1), Date(2025, 1, 31))  # window omitted -- always all-zero
+1-element Vector{Float64}:
+ 0.0
+```
 """
 function easter_regressor(from::Date, to::Date; window::Integer = 0, freq::Symbol = :month)
     periods = _periods_for(freq, from, to)
@@ -405,6 +567,19 @@ a synthetic Diwali-effect test that genuinely shifted the fitted
 seasonal factors) -- this function produces the `data` vector that
 block needs; the spec-rendering layer is responsible for writing the
 block itself.
+
+# Examples
+```jldoctest
+julia> using Dates
+
+julia> custom_holiday_regressor(Date(2025, 9, 1), Date(2025, 12, 31), INDIA_NSE,
+                                 year -> year == 2025 ? Date(2025, 10, 21) : nothing)
+4-element Vector{Float64}:
+ 0.0
+ 1.0
+ 0.0
+ 0.0
+```
 """
 function custom_holiday_regressor(from::Date, to::Date, cal::Calendar, holiday_years_present::Function; freq::Symbol = :month)
     periods = _periods_for(freq, from, to)
