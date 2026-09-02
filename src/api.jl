@@ -28,6 +28,31 @@ Deliberately a plain `struct`: checked directly against TSAnalytics.jl's
 actual source that `ClassicalDecomposition` and `STLDecomposition` share
 no common abstract type to subtype -- the open question CLAUDE.md
 flagged at project scaffolding, resolved here, not re-deferred.
+
+# Examples
+This needs the real x13prebuilt binary, so it is shown as a plain code
+block rather than a live doctest -- confirmed directly against a real
+run, not invented:
+```julia
+julia> res = x13(dataset("airline"))
+X13Result
+  ARIMA model:  (0 0 0)
+  Transform:    none
+  N:            144
+  AIC:          0.205784733802868E+04
+  BIC:          0.206081715132825E+04
+  Q:            0.27
+  Outliers:     0
+
+julia> res.seasonally_adjusted[1:3]
+3-element Vector{Float64}:
+ 124.546106577719
+ 124.626037057387
+ 124.891225520544
+
+julia> res.dates[1]
+1949-01-01
+```
 """
 struct X13Result
     observed::Vector{Float64}
@@ -95,6 +120,34 @@ regressor, which is enough to trigger the "regression present + default
 multiplicative mode + no explicit transform" error, even though this
 package's own `X13Spec` never renders a `regression{}` block for it.
 Not silently defaulted here -- pass `transform` explicitly.
+
+# Examples
+A bare call, with nothing turned on (see [`X13Result`](@ref) for what
+this does and does not fit):
+```julia
+julia> res = x13(dataset("airline"));
+```
+
+Letting X-13 make its usual automatic choices -- transform selection,
+ARIMA search, outlier detection, and trading-day/Easter testing --
+which is the specification most real use reaches for:
+```julia
+julia> res = x13(dataset("airline");
+                  automdl = true, outlier = true,
+                  aictest = [:td, :easter], transform = :auto);
+
+julia> arima_model(res)
+"(0 1 1)(0 1 1)"
+
+julia> transformfunction(res)
+:log
+
+julia> mstats(res).q
+0.2
+
+julia> length(outliers(res))
+1
+```
 """
 function x13(
     y;
@@ -272,6 +325,23 @@ end
 (inserted via `x13(y; missing_action=:x13)`'s `-99999` sentinel)
 replaced by regARIMA's own estimates. Re-runs via [`series`](@ref) if
 `.mv` wasn't already saved.
+
+The interpolated value's quality depends entirely on the model doing
+the interpolating -- a real difference, confirmed directly: with no
+`automdl`/`seasonal_order` (so no real ARIMA model fit at all, see
+[`X13Spec`](@ref)'s own docstring), the interpolated value is close to
+meaningless (`0.0`/`1.0` for a series around 120); with `automdl = true`
+fitting a genuine model, it lands close to the true value.
+
+# Examples
+```julia
+julia> y = copy(dataset("airline").value); y[5] = NaN;  # May 1949, true value 121.0
+
+julia> res = x13(y; start = (1949, 1), missing_action = :x13, transform = :log, automdl = true);
+
+julia> interpolated(res)[5]
+121.55895357992
+```
 """
 interpolated(r::X13Result) = series(r, :mv)
 
@@ -324,6 +394,24 @@ spec reproduces the original automatic run's tables only to within
 necessarily converge to bit-identical coefficients when a model is
 pre-specified vs. discovered through `automdl`'s own search). Compare
 results with `isapprox`, not `==`.
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> frozen = static(res);
+
+julia> frozen.arima_model
+"(0 1 1)(0 1 1)"
+
+julia> frozen.automdl
+false
+
+julia> res2 = x13(frozen);
+
+julia> res.seasonally_adjusted ≈ res2.seasonally_adjusted
+true
+```
 """
 function static(result::X13Result)
     udg = result.udg
@@ -519,6 +607,14 @@ StatsAPI.stderror(r::X13Result) = [c.stderror for c in _coefficient_lines(_udg_p
 Not independently cross-checked against R's own `dof(seas_object)`
 semantics; treat this definition as this package's own, not an assumed
 R-identical one, until that comparison is actually run.
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> StatsAPI.dof(res)  # nreg=0 (no regression variables), nmodel=2 (two MA terms)
+2
+```
 """
 StatsAPI.dof(r::X13Result) = something(_udg_int(r.udg, "nreg"), 0) + something(_udg_int(r.udg, "nmodel"), 0)
 
@@ -675,6 +771,25 @@ Table symbols are validated against the union of known X-11/SEATS/
 regARIMA table codes before any subprocess is spawned -- an unrecognized
 symbol throws `ArgumentError` immediately rather than being passed to
 the binary to fail on.
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto);
+
+julia> d8 = series(res, :d8);  # final unmodified SI ratios -- not one of X13Result's own fields
+
+julia> d8[1:2]
+2-element Vector{Float64}:
+ 0.90954413431534
+ 0.958134917539742
+
+julia> tables = series(res, [:d8, :hol]);  # one re-run for both, not two
+
+julia> sort(collect(keys(tables)))
+2-element Vector{Symbol}:
+ :d8
+ :hol
+```
 """ series
 
 # ---------------------------------------------------------------------
@@ -817,6 +932,22 @@ width is computed by the binary itself, not derived after the fact.
 Program limit: `maxlead` (X-13 default 12) is capped at 120
 (`pfcst`, [`validate!`](@ref)) -- pass `maxlead` to [`x13`](@ref)/
 [`X13Spec`](@ref), not here, to control the horizon itself.
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto);
+
+julia> f = forecast(res; level = 0.95);
+
+julia> f.point[1:3]
+3-element Vector{Float64}:
+ 444.296392254728
+ 413.509289596684
+ 465.549800699388
+
+julia> f.dates[1]
+1961-01-01
+```
 """
 function forecast(r::X13Result; level::Real = 0.95)
     result, period = _forecast_rerun(r, :fct, level; label = "forecast()")
@@ -837,6 +968,25 @@ Same as [`forecast`](@ref), extending `r.dates` BACKWARD instead --
 `.bct` (`forecast.backcasts`). The horizon is controlled by
 `spec_args["forecast.maxback"]` (no typed field -- see [`X13Spec`](@ref)'s
 own docstring for why only `maxlead` got one).
+
+# Examples
+The default `X13Spec` requests no backcasts at all -- `maxback` must be
+set explicitly through `spec_args`, or `.bct` comes back empty:
+```julia
+julia> res = x13(dataset("airline");
+                  automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto,
+                  spec_args = Dict("forecast.maxback" => "12"));
+
+julia> b = backcast(res; level = 0.95);
+
+julia> b.point[1:2]
+2-element Vector{Float64}:
+  99.1566037656758
+ 109.414698194457
+
+julia> b.dates[1]
+1948-01-01
+```
 """
 function backcast(r::X13Result; level::Real = 0.95)
     result, period = _forecast_rerun(r, :bct, level; label = "backcast()")
@@ -898,6 +1048,25 @@ throws `ArgumentError` if the model has NO regression effects at all
 case -- see this function's own source comment on `_component_precheck`
 for the one real, flagged gap (a handful of component kinds can't be
 cheaply distinguished from "not part of the model" before a subprocess).
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto);
+
+julia> comp = components(res; which = :all);
+
+julia> comp.trading_day[1:3]
+3-element Vector{Float64}:
+ 1.01186867692772
+ 0.991150442477876
+ 0.991189940604853
+
+julia> comp.user === nothing  # no user-defined regressor in this spec
+true
+
+julia> components(res; which = :outlier)[1:3] == comp.outlier[1:3]
+true
+```
 """
 function components(r::X13Result; which::Symbol = :all)
     if which == :all
@@ -1015,6 +1184,29 @@ considered redundant with `stderror` alone. `vcov` still throws its
 regular `ErrorException` in that case (via the same "output table does
 not exist" path [`series`](@ref) already uses), not a silent empty
 matrix.
+
+# Examples
+```julia
+julia> res = x13(dataset("airline").value; start = (1949, 1),
+                  regression_variables = ["easter[1]", "labor[1]"], automdl = true, transform = :log);
+
+julia> V = StatsAPI.vcov(res);
+
+julia> size(V)
+(4, 4)
+
+julia> sqrt.(diag(V)) ≈ StatsAPI.stderror(res)
+true
+```
+
+The `trading=true` derived-coefficient gap noted above, reproduced
+directly:
+```julia
+julia> res_td = x13(dataset("airline").value; start = (1949, 1), trading = true, automdl = true, transform = :log);
+
+julia> StatsAPI.vcov(res_td)
+ERROR: vcov(): .rcm has 6 rows but 7 regression coefficients were found in .udg -- refusing to guess at the alignment
+```
 """
 function StatsAPI.vcov(r::X13Result)
     coefs = _coefficient_lines(_udg_path(r))
@@ -1065,6 +1257,22 @@ which would mean either a new dependency (`Distributions.jl`, for one
 column) or leaning on TSAnalytics.jl exposing one, neither confirmed
 worth it yet -- the same open question applies to a possible future
 Q-Q plot panel. Flagged here rather than silently guessed at.
+
+# Examples
+```julia
+julia> res = x13(dataset("airline").value; start = (1949, 1),
+                  regression_variables = ["easter[1]", "labor[1]"], automdl = true, transform = :log);
+
+julia> StatsBase.coeftable(res)
+────────────────────────────────────────────────────
+                       Estimate   Std.Error  t value
+────────────────────────────────────────────────────
+Easter[1]             0.0201786  0.00952065  2.11946
+Labor[1]              0.0287849  0.0112048   2.56898
+MA\$Nonseasonal\$01\$01  0.344444   0.0808494   4.26032
+MA\$Seasonal\$12\$12     0.548218   0.0775167   7.07226
+────────────────────────────────────────────────────
+```
 """
 function StatsBase.coeftable(r::X13Result)
     lines = _coefficient_lines(_udg_path(r))
@@ -1088,6 +1296,29 @@ end
 transform, N/effective N, AIC/BIC, M7 quality statistic, QS on the
 seasonally adjusted series, outlier count, and a full `StatsBase.coeftable`)
 with its own `show`, matching R's `summary.seas` in spirit.
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> SeasonalAdjustment.summary(res)
+X13Summary
+  ARIMA model:  (0 1 1)(0 1 1)
+  Transform:    log
+  N:            144  (effective: 131)
+  AIC:          987.195554981389
+  BIC:          995.821146950993
+  Q (M7):       0.26
+  QS (SA):      statistic=0.0  pvalue=1.0
+  Outliers:     0
+
+────────────────────────────────────────────────────
+                       Estimate  Std.Error  t value
+────────────────────────────────────────────────────
+MA\$Nonseasonal\$01\$01  0.401808  0.0788697  5.09458
+MA\$Seasonal\$12\$12     0.556946  0.0762554  7.30368
+────────────────────────────────────────────────────
+```
 """
 struct X13Summary
     arima_model::Union{Nothing,String}
@@ -1194,6 +1425,19 @@ end
 `X13Spec(r.spec; kwargs...)` then re-runs (via the same `_run_spec`
 tail [`x13`](@ref) itself uses) -- R's `seasonal::update.seas`. `r`
 itself is untouched (`X13Result`/`X13Spec` are both immutable).
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> res2 = update(res; outlier = false);
+
+julia> res2.spec.outlier
+false
+
+julia> res.spec.outlier  # the original is untouched
+true
+```
 """
 function update(r::X13Result; kwargs...)
     new_spec = X13Spec(r.spec; kwargs...)
@@ -1228,11 +1472,28 @@ end
     slidingspans(r::X13Result) -> Union{Nothing,NamedTuple}
 
 `nothing` if `slidingspans{}` wasn't requested (`udg(r, "sspans") !=
-"yes"`); otherwise `(seasonal_max_pct=, sa_max_pct=, trend_max_pct=,
+"yes"`); otherwise `(seasonal_pct=, sachange_pct=, trend_pct=, td_pct=,
 raw=)` -- the headline "percentage of months flagged unstable" figures
 (`ssm7`'s own 4 values: seasonal/SA-percent-change/trend/TD, confirmed
 directly against `.udg`) plus `raw`, every `ss*`/`s2.*`/`s3.*` key
 verbatim, for anything not promoted to a typed field.
+
+# Examples
+`slidingspans{}` (or any spec_args entry naming it) must be requested
+explicitly -- it is not on by default:
+```julia
+julia> res = x13(dataset("airline"); start = (1949, 1), spec_args = Dict("slidingspans" => ""));
+
+julia> ss = slidingspans(res);
+
+julia> propertynames(ss)
+(:seasonal_pct, :sachange_pct, :trend_pct, :td_pct, :raw)
+
+julia> res_bare = x13(dataset("airline"));
+
+julia> slidingspans(res_bare) === nothing
+true
+```
 """
 function slidingspans(r::X13Result)
     udg(r, "sspans") == "yes" || return nothing
@@ -1257,6 +1518,25 @@ end
 every `r0N.lag00.aar.*` (average absolute revision) value found (the
 concurrent-vs-most-recent seasonally adjusted revision history), `raw`
 every `r0*`/`revspan` key verbatim.
+
+# Examples
+`history{}` must be requested explicitly, naming which estimates to
+track:
+```julia
+julia> res = x13(dataset("airline"); start = (1949, 1),
+                  spec_args = Dict("history.estimates" => "(sadj sadjchng)"));
+
+julia> h = revision_history(res);
+
+julia> length(h.sa_estimates)
+38
+
+julia> h.sa_estimates[1]
+0.9915460157
+
+julia> revision_history(x13(dataset("airline"))) === nothing
+true
+```
 """
 function revision_history(r::X13Result)
     udg(r, "history") == "yes" || return nothing
@@ -1275,6 +1555,17 @@ matches `statsmodels.tsa.x13.x13_arima_select_order`. Thin: runs
 [`x13`](@ref) with `automdl=true` (accepting the same kwargs `x13`
 does), then parses the resolved `arimamdl` string and [`transformfunction`](@ref)
 back out of the result.
+
+# Examples
+```julia
+julia> select_order(dataset("airline"))
+(order = (3, 1, 1), seasonal_order = (0, 1, 1, 12), transform = :none)
+```
+
+Note this searches under whatever kwargs are passed -- with no
+`aictest`/`transform` requested here, it is a different search (and a
+different result) than the fuller `automdl=true, aictest=[:td,:easter],
+transform=:auto` specification used elsewhere in this documentation.
 """
 function select_order(y; kwargs...)
     r = x13(y; automdl = true, kwargs...)
@@ -1293,6 +1584,13 @@ R's `out()`: writes the HTML output and opens it with the platform
 handler (`xdg-open` on Linux, `open` on macOS, `start` on Windows).
 Throws `ErrorException` if the output file doesn't exist (the binary
 only writes it on a successful run).
+
+# Examples
+```julia
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> open_output(res)  # opens the binary's own HTML report in the default browser
+```
 """
 function open_output(r::X13Result)
     path = joinpath(r.run_result.dir, "$(r.run_result.basename).html")
@@ -1426,6 +1724,47 @@ preserved -- `X13Spec` has no typed field for outlier types yet, and
 block (see [`validate!`](@ref)). Silently losing this would be worse
 than documenting it: check the source `.spc` by hand if `outlier.types`
 matters for your use case.
+
+# Examples
+This needs no real X-13 run -- it is pure text parsing, so it is a
+genuine jldoctest:
+```jldoctest
+julia> spc_text = \"\"\"
+       series {
+         title = "demo"
+         start = 1949.1
+         data = (112 118 132 129 121 135 148 148 136 119 104 118
+       115 126 141 135 125 149 170 170 158 133 114 140
+       145 150 178 163 172 178 199 199 184 162 146 166
+       171 180 193 181 183 218 230 242 209 191 172 194
+       196 196 236 235 229 243 264 272 237 211 180 201
+       204 188 235 227 234 264 302 293 259 229 203 229
+       242 233 267 269 270 315 364 347 312 274 237 278
+       284 277 317 313 318 374 413 405 355 306 271 306
+       315 301 356 348 355 422 465 467 404 347 305 336
+       340 318 362 348 363 435 491 505 404 359 310 337
+       360 342 406 396 420 472 548 559 463 407 362 405
+       417 391 419 461 472 535 622 606 508 461 390 432)
+       }
+       transform { function = log }
+       automdl { }
+       \"\"\";
+
+julia> path = joinpath(mktempdir(), "demo.spc");
+
+julia> write(path, spc_text);
+
+julia> spec = import_spc(path);
+
+julia> spec.transform
+:log
+
+julia> spec.automdl
+true
+
+julia> spec.start
+(1949, 1)
+```
 """
 function import_spc(path::AbstractString)
     text = read(path, String)
