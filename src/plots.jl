@@ -140,6 +140,17 @@ actually draw -- this package depends only on `RecipesBase.jl`.
 | `outliers` | `Bool` | `true` | Mark detected outliers (`:overlay` only) |
 | `trend` | `Bool` | `false` | Add the trend-cycle as a third `:overlay` line; ignored (with a warning) under `:components`, where it is already its own panel |
 | `transform` | `:none`, `:pc`, `:pcy` | `:none` | Levels, period-on-period growth, or year-on-year growth -- see [`_apply_transform`](@ref) |
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> plot(res)  # original + adjusted overlay, R's own default shape
+
+julia> plot(res; panels = :components)  # observed/SA/trend/irregular, 4 stacked panels
+```
 """
 @recipe function f(r::X13Result; panels = :overlay, outliers = true, trend = false, transform = :none)
     panels in (:overlay, :components) || throw(ArgumentError(
@@ -246,6 +257,15 @@ dispatch target instead of `X13Result` directly, sidestepping the
 conflict by construction. `RecipesBase.@userplot ResidPlot` also
 auto-exports `residplot`/`residplot!` -- see `src/SeasonalAdjustment.jl`,
 which does NOT separately export these names itself.
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> residplot(res)  # regARIMA residuals against time, with the detected outlier marked
+```
 """
 RecipesBase.@userplot ResidPlot
 @recipe function f(rp::ResidPlot; outliers = true)
@@ -299,6 +319,15 @@ result triggers `series`'s own automatic (and announced) re-run instead.
 
 Implemented via `RecipesBase.@userplot` (see [`residplot`](@ref)'s own
 docstring for exactly why a plain series-type recipe doesn't work here).
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> monthplot(res)  # seasonal factors by calendar month, with D8 SI-ratio stems
+```
 """
 RecipesBase.@userplot MonthPlot
 @recipe function f(mp::MonthPlot; choice = :seasonal, siratios = true)
@@ -375,6 +404,15 @@ itself reports as a visually significant peak (see [`spectrum_peaks`](@ref)).
 
 Implemented via `RecipesBase.@userplot` (see [`residplot`](@ref)'s own
 docstring for exactly why a plain series-type recipe doesn't work here).
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto);
+
+julia> spectrumplot(res; series = :sa)  # vertical markers at any significant seasonal/trading-day peak
+```
 """
 RecipesBase.@userplot SpectrumPlot
 @recipe function f(sp::SpectrumPlot; series = :sa)
@@ -469,6 +507,17 @@ Year labelling: each line's own `label` is set to its year (R places the
 year at the line's right end rather than in a legend, which matters past
 ~12 years; whether a backend actually draws it that way is its own
 choice, not controlled here).
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> seasonalplot(res)  # one line per year, calendar period on the x-axis
+
+julia> seasonalplot(res; highlight = :last)  # the most recent year drawn at full opacity
+```
 """
 RecipesBase.@userplot SeasonalPlot
 @recipe function f(sp::SeasonalPlot; series::Symbol = :seasonal, polar::Bool = false, highlight = nothing)
@@ -527,6 +576,17 @@ interval at a known observation).
 
 `.fct`/`.bct` already carry point/lower/upper on the original scale
 , so nothing here needs back-transforming.
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> forecastplot(res)  # observed + forecast + a prediction-interval ribbon
+
+julia> forecastplot(res; backcast = true, history = 36)  # last 3 years only, plus the backcast extension
+```
 """
 RecipesBase.@userplot ForecastPlot
 @recipe function f(fp::ForecastPlot; backcast::Bool = false, level::Real = 0.95, history::Union{Nothing,Int} = nothing)
@@ -595,6 +655,17 @@ drawn as two horizontal reference lines -- `.acf`'s own file DOES carry
 a proper per-lag standard error column (`SE_of_ACF`), not currently
 exposed here (only the primary statistic column is fetched, see
 `SeasonalAdjustment._check_series`).
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, transform = :auto);
+
+julia> residdiagplot(res)  # series + ACF + histogram, the default three panels
+
+julia> residdiagplot(res; panels = [:series, :acf, :pacf], lags = 12)
+```
 """
 RecipesBase.@userplot ResidDiagPlot
 @recipe function f(rd::ResidDiagPlot; panels::AbstractVector{Symbol} = [:series, :acf, :histogram], lags::Int = 24)
@@ -672,6 +743,17 @@ Components absent from the model are skipped silently (not drawn as
 flat lines) -- `which=:all` with NO regression effects at all throws
 `ArgumentError`, via [`components`](@ref)'s own check (not duplicated
 here).
+
+# Examples
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); automdl = true, outlier = true, aictest = [:td, :easter], transform = :auto);
+
+julia> componentplot(res)  # every present regression-effect time path, plus the no-effect reference line
+
+julia> componentplot(res; which = :trading_day)
+```
 """
 RecipesBase.@userplot ComponentPlot
 @recipe function f(cp::ComponentPlot; which::Symbol = :all, reference::Bool = true)
@@ -744,6 +826,23 @@ concurrent-vs-most-recent SEASONALLY ADJUSTED average-absolute-revision
 series `revision_history` already collects. NOT the full "each span its
 own line" chart originally sketched -- that needs the raw
 per-span tables, a genuine future extension, not silently pretended here.
+
+# Examples
+`kind=:slidingspans`/`:history` each need the matching spec block
+requested up front (see [`slidingspans`](@ref)/[`revision_history`](@ref)):
+```julia
+julia> using SeasonalAdjustment, Plots
+
+julia> res = x13(dataset("airline"); start = (1949, 1),
+                  spec_args = Dict("slidingspans" => ""));
+
+julia> spanplot(res)  # average absolute seasonal-factor revision, by calendar period
+
+julia> res2 = x13(dataset("airline"); start = (1949, 1),
+                   spec_args = Dict("history.estimates" => "(sadj sadjchng)"));
+
+julia> spanplot(res2; kind = :history)  # concurrent-vs-most-recent SA revision over time
+```
 """
 RecipesBase.@userplot SpanPlot
 @recipe function f(sp::SpanPlot; kind::Symbol = :slidingspans)

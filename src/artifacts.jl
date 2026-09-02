@@ -189,6 +189,16 @@ internal layout (confirmed directly):
   fail silently at first actual use. A real tar.gz, which Julia's
   normal installer genuinely does handle correctly (confirmed directly
   against a fresh artifact cache, unlike the Windows case above).
+
+# Examples
+```julia
+julia> x13_binary_path()
+"/home/user/.julia/artifacts/d26789ab28482a93b867e29a228a64853eb99216/x13ashtml"
+```
+The exact value is platform- and machine-dependent (a resolved
+artifact-cache path), so it is not reproduced as a live doctest --
+what matters is that it resolves without throwing and names a real,
+invokable file.
 """
 function x13_binary_path()
     if Sys.islinux()
@@ -261,6 +271,16 @@ throws). Exists so callers running or parsing a spec can give a clear,
 actionable error -- "the x13prebuilt binary could not be resolved for
 this platform" -- instead of a cryptic subprocess failure three layers
 deep.
+
+# Examples
+```julia
+julia> x13_binary_available()
+true
+```
+Safe to use as a guard, since it never throws:
+```julia
+julia> x13_binary_available() || error("x13prebuilt isn't available on this platform")
+```
 """
 function x13_binary_available()
     path = try

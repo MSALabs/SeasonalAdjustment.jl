@@ -52,6 +52,21 @@ shipped yet; reserved for still-outstanding
 teaching examples) -- added now rather than deferred, since this
 session already ships one `:derived` dataset that needs to say so
 structurally, not just in prose.
+
+# Examples
+```julia
+julia> dataset_info("airline")
+International airline passengers ("airline")
+  Source:     Box & Jenkins (1976), Series G
+  Licence:    Public domain
+  Kind:       published
+  Frequency:  12 (monthly)
+  N:          144
+  Span:       1949-01-01 .. 1960-12-01
+  Units:      thousands of passengers
+  Citation:   Box, G.E.P. and Jenkins, G.M. (1976). Time Series
+              Analysis: Forecasting and Control. Holden-Day. Series G.
+```
 """
 struct DatasetInfo
     name::String
@@ -216,6 +231,20 @@ if the bare form needs a hint.
 ```julia
 result = x13(dataset("airline"))   # start is inferred from tsindex, see below
 ```
+
+# Examples
+```jldoctest
+julia> d = dataset("airline");
+
+julia> length(d.value), first(d.date), last(d.date)
+(144, Dates.Date("1949-01-01"), Dates.Date("1960-12-01"))
+
+julia> d.value[1:3]
+3-element Vector{Float64}:
+ 112.0
+ 118.0
+ 132.0
+```
 """
 dataset(name::AbstractString) = deepcopy(_dataset_table(name))
 dataset(name::AbstractString, sink) = sink(_dataset_table(name))
@@ -229,6 +258,16 @@ Every bundled dataset's name, sorted (`"airline"`, `"appliance"`,
 `"appliance_q"`, `"iip_india"`) -- or, with a `sink`, a Tables.jl table
 of every dataset's own metadata (name/title/frequency/n/span/units/
 licence/kind), one row per dataset.
+
+# Examples
+```jldoctest
+julia> datasets()
+4-element Vector{String}:
+ "airline"
+ "appliance"
+ "appliance_q"
+ "iip_india"
+```
 """
 datasets() = sort(collect(keys(_REGISTRY)))
 datasets(sink) = sink(_metadata_table())
@@ -255,6 +294,20 @@ Full provenance for one bundled dataset -- source, licence, citation,
 span, and (for `iip_india`) an explicit note on what was and wasn't
 independently re-verified this session. Answers "may I publish a chart
 of this" without re-deriving it from `notes` prose each time.
+
+# Examples
+```jldoctest
+julia> info = dataset_info("airline");
+
+julia> info.source
+"Box & Jenkins (1976), Series G"
+
+julia> info.licence
+"Public domain"
+
+julia> info.kind
+:published
+```
 """
 dataset_info(name::AbstractString) = _REGISTRY[String(name)]
 dataset_info(name::Symbol) = dataset_info(String(name))

@@ -22,6 +22,24 @@ basename (without extension) -- `x13ashtml` writes its output tables
 `success` is derived from `errors` being empty, NOT the process exit
 code -- confirmed directly that `x13ashtml` exits 0 even when it prints
 an `ERROR:` and produces no seasonal adjustment at all.
+
+# Examples
+```julia
+julia> spec = X13Spec(collect(1.0:48.0) .+ 100; automdl = true);
+
+julia> path = write_spec(spec, joinpath(mktempdir(), "demo.spc"));
+
+julia> result = run_x13(path);
+
+julia> result.success
+true
+
+julia> result.errors
+String[]
+
+julia> result.dir  # the fresh scratch directory this run happened in
+"/tmp/jl_XXXXXX"
+```
 """
 struct X13RunResult
     success::Bool
@@ -132,6 +150,23 @@ every documented `x13ashtml` flag individually: `.udg` is NOT controlled
 by anything in the
 spec file itself (`X13Spec`/`render`), only by this flag on the
 invocation. Parse the result with [`parse_udg`](@ref).
+
+# Examples
+```julia
+julia> spec = X13Spec(collect(1.0:48.0) .+ 100; automdl = true);
+
+julia> path = write_spec(spec, joinpath(mktempdir(), "demo.spc"));
+
+julia> result = run_x13(path; udg = true);
+
+julia> result.success
+true
+
+julia> d = parse_udg(joinpath(result.dir, "\$(result.basename).udg"));
+
+julia> haskey(d, "aic")
+true
+```
 """
 function run_x13(spec_path::AbstractString; binary_path::AbstractString = x13_binary_path(), udg::Bool = false)
     dir, base = _prepare_run_dir(spec_path)
@@ -160,6 +195,18 @@ real binary. See `_run_capture`'s own comment for why output capture uses a
 merged `Pipe` read directly by the calling task, not an `IOBuffer`
 redirect target -- that form raced under concurrent use even with each
 task given its own private buffer.
+
+# Examples
+```julia
+julia> specs = [X13Spec(dataset(n).value; automdl = true) for n in ("airline", "appliance")];
+
+julia> paths = [write_spec(specs[i], joinpath(mktempdir(), "run_\$i.spc")) for i in eachindex(specs)];
+
+julia> results = run_x13_batch(paths);
+
+julia> all(r -> r.success, results)
+true
+```
 """
 function run_x13_batch(
     spec_paths::AbstractVector{<:AbstractString};

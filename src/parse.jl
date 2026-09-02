@@ -25,6 +25,29 @@ month-number. A quarter is mapped to the `Date` of its first month
 (Q1->month 1, Q2->month 4, Q3->month 7, Q4->month 10). Any other `period`
 value, or a trailing-digit value out of range for the given `period`,
 throws a clear error rather than silently misparsing.
+
+# Examples
+This needs no real X-13 run -- it is pure text parsing against the
+documented file format, so it is a genuine jldoctest:
+```jldoctest
+julia> path = joinpath(mktempdir(), "demo.d11");
+
+julia> write(path, "date\\td11\\n------\\t---------\\n194901\\t124.55\\n194902\\t124.63\\n");
+
+julia> parse_table(path)
+2-element Vector{Tuple{Dates.Date, Float64}}:
+ (Dates.Date("1949-01-01"), 124.55)
+ (Dates.Date("1949-02-01"), 124.63)
+
+julia> qpath = joinpath(mktempdir(), "demo.q11");
+
+julia> write(qpath, "date\\tq11\\n------\\t---------\\n194901\\t124.55\\n194902\\t124.63\\n");
+
+julia> parse_table(qpath; period = 4)
+2-element Vector{Tuple{Dates.Date, Float64}}:
+ (Dates.Date("1949-01-01"), 124.55)
+ (Dates.Date("1949-04-01"), 124.63)
+```
 """
 function parse_table(path::AbstractString; period::Int=12)
     period in (4, 12) || error(
@@ -77,6 +100,22 @@ directly avoids the caller having to track and re-pass it by hand.
 `period` (`12` monthly / `4` quarterly) is threaded straight through to
 [`parse_table`](@ref) for every requested table -- callers must pass the
 same `period` the underlying spec was run with.
+
+# Examples
+```julia
+julia> spec = X13Spec(dataset("airline").value; start = (1949, 1), automdl = true);
+
+julia> path = write_spec(spec, joinpath(mktempdir(), "demo.spc"));
+
+julia> result = run_x13(path);
+
+julia> tables = parse_output(result, [:d10, :d11]);
+
+julia> sort(collect(keys(tables)))
+2-element Vector{Symbol}:
+ :d10
+ :d11
+```
 """
 function parse_output(result::X13RunResult, tables::AbstractVector{Symbol}; period::Int=12)
     out = Dict{Symbol,Vector{Tuple{Date,Float64}}}()
@@ -108,6 +147,22 @@ that need a specific key as a number should `parse` it themselves.
 documented `x13ashtml` flag individually: `.udg` is only written when
 the binary is invoked with the `-S` command-line flag (see `run_x13`'s
 `udg` keyword), not by anything in `X13Spec`/`render`.
+
+# Examples
+Pure text parsing, no real X-13 run needed:
+```jldoctest
+julia> path = joinpath(mktempdir(), "demo.udg");
+
+julia> write(path, "aic: 1397.25779143434\\ntransform: Log(y)\\n");
+
+julia> d = parse_udg(path);
+
+julia> d["aic"]
+"1397.25779143434"
+
+julia> d["transform"]
+"Log(y)"
+```
 """
 function parse_udg(path::AbstractString)
     d = Dict{String,String}()
