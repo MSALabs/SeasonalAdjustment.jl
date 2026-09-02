@@ -4,10 +4,11 @@ CurrentModule = SeasonalAdjustment
 
 # Running X-13 Directly
 
-One paragraph: `x13()` builds a spec, runs it, and parses the result in
-one call. This page is for the layer underneath, when you've already
-built an [`X13Spec`](@ref) by hand (see [Specifications](01-specifications.md))
-and want to run it yourself.
+One paragraph: `x13()` builds a spec, runs it, and parses the result
+in one call. This page is for the layer underneath, for occasions when
+an [`X13Spec`](@ref) has already been built by hand (see
+[Specifications](01-specifications.md)) and one wishes to run it
+oneself.
 
 ## How do I run a spec I built by hand?
 
@@ -19,9 +20,9 @@ result = run_x13(path)
 [`run_x13`](@ref) copies the spec into a fresh scratch directory, runs
 the binary against it, and returns a typed [`X13RunResult`](@ref) —
 `success`, `warnings`, and `errors` already extracted from the
-binary's own stdout, not left for you to grep. Confirmed directly that
-the process exit code alone cannot tell success from failure — always
-check `result.success`.
+binary's own stdout, rather than left for one to grep out oneself.
+Confirmed directly that the process exit code alone cannot tell
+success from failure — `result.success` ought always be checked.
 
 ## Where do the output files go?
 
@@ -39,9 +40,9 @@ result = run_x13(path)
 ```
 
 `run_x13` itself does not delete anything — Julia's own `mktempdir`
-cleanup (if you used the default, cleaned-up form) is what would remove
-it. Pass `cleanup = false` explicitly, as above, to keep the directory
-around after the process ends.
+cleanup (where the default, cleaned-up form was used) is what would
+remove it. Pass `cleanup = false` explicitly, as shown above, to keep
+the directory around once the process has ended.
 
 ## How do I see the binary's warnings?
 
@@ -51,8 +52,9 @@ result.warnings   # Vector{String}, extracted from stdout
 result.errors     # Vector{String}, empty when result.success
 ```
 
-A run can succeed (`result.success == true`) and still carry warnings —
-check both, not just `success`, when a result looks unexpected.
+A run may succeed (`result.success == true`) and still carry
+warnings — both are worth checking, not `success` alone, whenever a
+result looks other than expected.
 
 ## How do I open the full HTML report?
 
@@ -60,9 +62,9 @@ check both, not just `success`, when a result looks unexpected.
 open_output(result)
 ```
 
-[`open_output`](@ref) opens the binary's own HTML output in your
+[`open_output`](@ref) opens the binary's own HTML output in the
 default browser — the exhaustive detail X-13 itself produces, useful
-when something needs investigating beyond what any typed accessor
+where something needs investigating beyond what any typed accessor
 surfaces.
 
 ## How do I check the binary is working?
@@ -72,11 +74,11 @@ x13_binary_available()   # -> Bool, never throws
 x13_binary_path()        # -> String, the resolved executable path
 ```
 
-[`x13_binary_available`](@ref) resolves the artifact for your platform
-and actually invokes it, returning `false` rather than throwing — safe
-to use as a guard in scripts and test suites. See
+[`x13_binary_available`](@ref) resolves the artifact for the current
+platform and thereafter actually invokes it, returning `false` rather
+than throwing — safe to use as a guard in scripts and test suites. See
 [Getting Started chapter 1](../getting-started/01-installation.md) for
-what a `false` result means and how to fix it.
+what a `false` result means, and how it may be fixed.
 
 ---
 

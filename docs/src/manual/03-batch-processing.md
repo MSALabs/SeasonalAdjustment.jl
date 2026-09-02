@@ -17,10 +17,10 @@ options_list = [(; automdl = true, outlier = true, transform = :auto) for _ in n
 specs = generate_specs(series_list, options_list)
 ```
 
-`series_list` and `options_list` must be the same length — one
+`series_list` and `options_list` must be of the same length — one
 `NamedTuple` of `x13()`-style keywords per series. `generate_specs`
-builds every [`X13Spec`](@ref) (using threads when there are enough
-series to make it worthwhile), but does not run anything yet.
+builds every [`X13Spec`](@ref) (using threads where there are enough
+series to make this worthwhile), but does not run anything as yet.
 
 ## How do I run them?
 
@@ -30,19 +30,20 @@ results = run_x13_batch(paths)
 ```
 
 [`run_x13_batch`](@ref) runs every path concurrently by default — one
-`@async` task per subprocess, joined with `@sync`, not a worker-pool.
-That design was benchmarked directly against the alternative and found
-faster for X-13's own real ~10ms-per-run cost, where worker-pool
-coordination overhead would exceed the work being parallelised.
+`@async` task per subprocess, joined with `@sync`, rather than a
+worker-pool. This design was benchmarked directly against the
+alternative and found faster for X-13's own real ~10ms-per-run cost,
+where worker-pool coordination overhead would exceed the work being
+parallelised in the first place.
 
 !!! warning "Gotcha — `run_x13_batch` never produces `.udg`"
-    `run_x13_batch` has no `udg` keyword, so it never passes the `-S`
-    flag — meaning none of the diagnostics functions in
-    [Accessing Diagnostics](10-diagnostics-access.md) have anything to
-    read after a batch run through this function alone. For a panel
-    where you also want diagnostics, call [`run_x13`](@ref) directly
-    per spec with `udg = true`, as the next section does — the same
-    `@sync`/`@async` pattern works identically.
+    `run_x13_batch` has no `udg` keyword, and so never passes the `-S`
+    flag — meaning none of the diagnostics functions in [Accessing
+    Diagnostics](10-diagnostics-access.md) have anything to read
+    after a batch run through this function alone. For a panel where
+    diagnostics are also wanted, call [`run_x13`](@ref) directly per
+    spec with `udg = true`, as the next section does — the very same
+    `@sync`/`@async` pattern works identically well here.
 
 ## How do I handle one series failing?
 
@@ -53,16 +54,17 @@ for (name, r) in zip(names, results)
 end
 ```
 
-A failure in one run does not raise or stop the others — `run_x13_batch`
-always returns a full-length `Vector{X13RunResult}`, one entry per
-input path, each with its own `success`/`errors`. Check individually
-rather than wrapping the whole call in a `try`.
+A failure in one run does not raise or stop the others —
+`run_x13_batch` always returns a full-length `Vector{X13RunResult}`,
+one entry per input path, each with its own `success`/`errors`. These
+are best checked individually rather than wrapping the whole call in a
+`try`.
 
 ## How do I collect diagnostics across a panel?
 
 This is the section with no single function behind it — the worked
-loop, using `run_x13` directly (with `udg = true`) so every diagnostics
-accessor below has something to read:
+loop, using `run_x13` directly (with `udg = true`) so that every
+diagnostics accessor below has something to read:
 
 ```julia
 results = Vector{X13RunResult}(undef, length(specs))
@@ -92,15 +94,15 @@ Real output, on `airline` and `appliance`:
 (series = "appliance", transform = :log, model = "(3 0 1)(0 1 1)", q = 0.28, m7 = 0.176, qs_p_adjusted = 1.0, n_outliers = 0, converged = true)
 ```
 
-Collect `rows` into a `DataFrame` (`DataFrame(rows)`) or leave it as
-the `Vector{NamedTuple}` above — both are Tables.jl-compatible. This is
-the shape a production run at any real scale actually wants: one row
-per series, the headline diagnostics as columns, nothing that needs a
-plot to read.
+`rows` may be collected into a `DataFrame` (`DataFrame(rows)`) or left
+as the `Vector{NamedTuple}` above — both are Tables.jl-compatible.
+This is the shape a production run at any real scale genuinely wants:
+one row per series, the headline diagnostics as columns, nothing that
+requires a plot to be read.
 
 ---
 
 **See also:** [Accessing Diagnostics](10-diagnostics-access.md) for
-what each column in the worked loop above means and how to read it for
-one series at a time. [`generate_specs`](@ref)/[`run_x13_batch`](@ref)
+what each column in the worked loop above means, and how to read it
+for one series at a time. [`generate_specs`](@ref)/[`run_x13_batch`](@ref)
 in the [API Reference](../api.md).

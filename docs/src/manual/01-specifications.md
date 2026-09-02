@@ -4,23 +4,23 @@ CurrentModule = SeasonalAdjustment
 
 # Specifications
 
-One paragraph: [`x13`](@ref) covers most work. This page is for the rest
-— when you need to see, check, or hand-build the specification `x13()`
-builds for you internally.
+One paragraph: [`x13`](@ref) covers most work. This page is for the
+rest — for occasions when one needs to see, check, or hand-build the
+specification `x13()` otherwise builds internally.
 
 ## When do I need more than `x13()`?
 
-Three tiers, in the order to reach for them:
+Three tiers, in the order worth reaching for them:
 
 1. **`x13()`'s own keywords** — `automdl`, `outlier`, `transform`,
-   `seasonal_order`, and the rest. Covers most cases; see
+   `seasonal_order`, and the rest. These cover most cases; see
    [Getting Started](../getting-started/04-beyond-defaults.md).
 2. **`spec_args`** — any spec block with no dedicated keyword
-   (`forecast`, `slidingspans`, `history`, `pickmdl`, ...), passed as raw
-   `"block.argument" => "value"` pairs.
-3. **Building an [`X13Spec`](@ref) directly** — when you want to inspect
-   or modify the spec before running it, rather than let `x13()` build
-   and run it in one step.
+   (`forecast`, `slidingspans`, `history`, `pickmdl`, ...), passed as
+   raw `"block.argument" => "value"` pairs.
+3. **Building an [`X13Spec`](@ref) directly** — where the spec is to
+   be inspected or modified before it is run, rather than letting
+   `x13()` build and run it in one step.
 
 ## How do I set a spec argument with no keyword?
 
@@ -29,12 +29,12 @@ res = x13(dataset("airline");
           spec_args = Dict("forecast.maxlead" => "12"))
 ```
 
-`spec_args` renders each entry verbatim into the named block, splitting
-on the first `.` for the block name. A key naming a block the struct
-*already* renders through a typed field (`transform`, `x11`, `automdl`,
-`regression`, `estimate`, `series`, `arima`, `seats`, `outlier`) throws
-rather than creating two sources of truth for one block — set the typed
-field instead.
+`spec_args` renders each entry verbatim into the named block,
+splitting on the first `.` for the block name. A key naming a block
+the struct *already* renders through a typed field (`transform`,
+`x11`, `automdl`, `regression`, `estimate`, `series`, `arima`, `seats`,
+`outlier`) throws rather than creating two sources of truth for one
+block — set the typed field instead.
 
 ## How do I see what specification was generated?
 
@@ -44,8 +44,8 @@ spec = X13Spec(dataset("airline").value;
 print(render(spec))
 ```
 
-[`render`](@ref) returns the `.spc` text `x13()` would send to the
-binary, without running anything.
+[`render`](@ref) returns the `.spc` text `x13()` would otherwise send
+to the binary, without running anything itself.
 
 ## How do I check a specification before running it?
 
@@ -65,14 +65,15 @@ automdl spec in the same input file."
 against the binary — minimum series length, the ARIMA-vs-`automdl`
 conflict shown above, the `transform=:log`/multiplicative-mode
 interaction, regressor forecast-horizon coverage — natively, in
-microseconds, before a subprocess is ever spawned. `x13()` calls it for
-you; call it yourself when building a spec by hand, so a bad
-specification fails immediately rather than after a real binary
+microseconds, before a subprocess is ever spawned. `x13()` calls it
+automatically; call it oneself when building a spec by hand, so that a
+bad specification fails immediately rather than after a real binary
 round-trip.
 
 **What it cannot check:** the *content* of `spec_args` or
-`regression_variables` passthrough. Those are rendered verbatim; a typo
-in `"td"` spelled `"tdd"` is caught by the binary, not by `validate!`.
+`regression_variables` passthrough. These are rendered verbatim; a
+typo in `"td"` spelled `"tdd"` is caught by the binary, not by
+`validate!`.
 
 ## How do I write a `.spc` file?
 
@@ -81,7 +82,7 @@ path = write_spec(spec, "myspec.spc")
 ```
 
 [`write_spec`](@ref) validates, renders, and writes in one call — the
-file `run_x13`(@ref) then runs directly.
+file `run_x13`(@ref) may then be run directly.
 
 ## How do I change one setting on an existing spec?
 
@@ -92,14 +93,15 @@ spec2 = X13Spec(spec; outlier = true)
 `X13Spec`'s copy constructor takes an existing spec plus keyword
 overrides, leaving everything else unchanged. This is what
 [`static`](@ref) (see [Reproducibility](08-reproducibility.md)) and
-[`update`](@ref) both build on internally.
+[`update`](@ref) both build upon internally.
 
 !!! warning "Gotcha — a named field wins over `spec_args` silently for the same setting spelled two ways"
-    If a setting is reachable both through a typed field and through
-    `spec_args` under a different block name that happens to render the
-    same underlying X-13 argument, the typed field's own render call
-    runs and `spec_args` cannot un-set it. Prefer the typed field
-    whenever one exists; reach for `spec_args` only for what has none.
+    Should a setting be reachable both through a typed field and
+    through `spec_args` under a different block name that happens to
+    render the same underlying X-13 argument, the typed field's own
+    render call runs, and `spec_args` cannot un-set it. The typed
+    field is to be preferred wherever one exists; reach for
+    `spec_args` only for what has none.
 
 ---
 

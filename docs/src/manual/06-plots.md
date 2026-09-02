@@ -5,9 +5,9 @@ CurrentModule = SeasonalAdjustment
 # Plots
 
 One paragraph: nine `RecipesBase.jl` recipes cover the standard X-13
-charts. This page is short by design — docstrings carry the keywords;
-see the [Introduction](../introduction/01-why-adjust.md) for what each
-chart means and why to look at it.
+charts. This page is kept short by design — the docstrings carry the
+keywords; see the [Introduction](../introduction/01-why-adjust.md) for
+what each chart means and why it is worth looking at.
 
 ## How do I plot a result?
 
@@ -44,12 +44,13 @@ plot(res; outliers = true)
 
 `RecipesBase.jl` imposes no backend of its own — every recipe on this
 page is backend-agnostic, and nothing else in this documentation
-answers which one to pick. `Plots.jl` with the `GR` backend is what
-every figure in this documentation was actually rendered with, and is
-the reasonable default: fast, dependency-light, and works headlessly in
-CI. A Makie backend (`CairoMakie`, `GLMakie`) is worth reaching for if
-you want interactivity or are already in a Makie-based workflow — the
-recipes themselves don't change.
+settles which one to pick. `Plots.jl` with the `GR` backend is what
+every figure in this documentation was actually rendered with, and
+makes for a reasonable default: fast, dependency-light, and works
+headlessly in CI. A Makie backend (`CairoMakie`, `GLMakie`) is worth
+reaching for should interactivity be wanted, or where one is already
+working within a Makie-based workflow — the recipes themselves do not
+change either way.
 
 ## How do I save a figure?
 
@@ -58,7 +59,8 @@ p = plot(res)
 savefig(p, "adjustment.png")
 ```
 
-Standard `Plots.jl`/`RecipesBase.jl` usage — nothing package-specific.
+Standard `Plots.jl`/`RecipesBase.jl` usage — nothing package-specific
+here at all.
 
 ## The other eight recipes
 
@@ -73,10 +75,10 @@ Standard `Plots.jl`/`RecipesBase.jl` usage — nothing package-specific.
 | [`componentplot`](@ref) | trading-day/holiday/user/outlier factor time paths |
 | [`spanplot`](@ref) | sliding-spans / revision-history diagnostics |
 
-Each is a `RecipesBase.@userplot` wrapper, called the same way as
+Each is a `RecipesBase.@userplot` wrapper, called in the same way as
 `plot`: `residplot(res)`, `monthplot(res; choice = :seasonal)`, and so
-on. Every one also has a mutating `!` form (`residplot!`) for adding to
-an existing plot.
+on. Every one also has a mutating `!` form (`residplot!`) for adding
+to an existing plot.
 
 ---
 

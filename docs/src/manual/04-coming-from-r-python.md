@@ -4,12 +4,13 @@ CurrentModule = SeasonalAdjustment
 
 # Coming from R or Python
 
-One paragraph: [`x13`](@ref)'s keyword arguments are a genuine superset
-of both R's `seas()` and Python's `x13_arima_analysis()` — R-style raw
-passthrough for anything without a curated field, layered with
-Python's own curated parameter names for discoverability. This page is
-a translation aid, not a tutorial; if you already know either tool, most
-of this package will look familiar immediately.
+One paragraph: [`x13`](@ref)'s keyword arguments are a genuine
+superset of both R's `seas()` and Python's `x13_arima_analysis()` — R-
+style raw passthrough for anything without a curated field, layered
+with Python's own curated parameter names for discoverability. This
+page is a translation aid, not a tutorial; anyone already familiar
+with either tool will find most of this package immediately familiar
+in turn.
 
 ## How do I translate a `seas()` call?
 
@@ -43,8 +44,8 @@ for anything without a curated keyword — see
 | `.results` (raw text) | `res.run_result` ([`X13RunResult`](@ref), typed) |
 
 `maxorder`/`maxdiff` are named identically to `statsmodels`'s own
-parameters on purpose — this is Python's curated-subset layer,
-available alongside R's full passthrough on the same call.
+parameters, quite deliberately — this is Python's curated-subset
+layer, available alongside R's full passthrough on the very same call.
 
 ## How do I reuse an existing `.spc` file?
 
@@ -54,49 +55,50 @@ res = import_spc("existing.spc")
 
 [`import_spc`](@ref) reads a `.spc` file written by any X-13 tooling —
 R, Python, or the binary directly — into an [`X13Result`](@ref)
-without hand-translating the spec. It is not a general X-13 grammar
-parser (comments and unusual multi-line quoting are not handled), and
-one real, confirmed gap: `outlier { types = (ao ls tc) }` sets
-`outlier = true` but the specific `types` list is dropped, since
-`X13Spec` has no typed field for it yet — check the source `.spc` by
-hand if that list matters for your use case.
+without the spec needing to be hand-translated. It is not a general
+X-13 grammar parser (comments and unusual multi-line quoting are not
+handled), and one real, confirmed gap exists: `outlier { types = (ao
+ls tc) }` sets `outlier = true`, but the specific `types` list itself
+is dropped, `X13Spec` having no typed field for it as yet — the source
+`.spc` should be checked by hand where that list matters to the use
+case in question.
 
 ## Where does this package deliberately differ from R?
 
-Three real, confirmed divergences — collected here because a user
-diffing output against R needs them together, not scattered across
-docstrings.
+Three real, confirmed divergences — collected here together, since
+anyone diffing output against R needs all three together, not
+scattered across separate docstrings.
 
 **`maxlead` is not forced to zero when a user regressor is present.**
 R's `seasonal` cannot extend a user-defined regressor past the sample
-end, so it silently sets `forecast.maxlead = 0` whenever one is
-present. This package embeds the regressor's data inline and
+end, and so silently sets `forecast.maxlead = 0` whenever one is
+present. This package embeds the regressor's data inline, and
 [`validate!`](@ref) already requires it to cover the series plus one
 forecast horizon — so it genuinely *can* extend and forecast, and does
 so by default. Set `spec_args = Dict("forecast.maxlead" => "0")`
-explicitly to match R's behaviour.
+explicitly to match R's own behaviour instead.
 
 **[`custom_holiday_regressor`](@ref) drops a holiday landing on a
-non-trading day.** A holiday that falls on a day that was not a
-working day anyway produces no incremental trading-day effect to
-explain, so the regressor contributes `0.0` for that occurrence rather
-than `1.0`. Both R's and Python's reference pipelines this package was
-checked against use a bare month dummy instead, which does not make
-this distinction. Output will not match either on a year where the
+non-trading day.** A holiday falling on a day that was not a working
+day in any case produces no incremental trading-day effect to explain,
+so the regressor contributes `0.0` for that occurrence rather than
+`1.0`. Both R's and Python's reference pipelines this package was
+checked against use a bare month dummy instead, which draws no such
+distinction. Output will not match either, on a year where the
 holiday falls on a weekend — see the
-[Moving Holidays](../introduction/11-moving-holidays.md) chapter of the
-*Introduction* for the real example this was found on.
+[Moving Holidays](../introduction/11-moving-holidays.md) chapter of
+the *Introduction* for the real example on which this was found.
 
 **`static()` reproduces to about six significant figures, not
 bit-identically.** Re-running a frozen specification converges
-slightly differently from the original automatic search, since
-estimation is given a starting model rather than searching for one.
+slightly differently from the original automatic search, estimation
+being given a starting model rather than having to search for one.
 Compare with `isapprox`, not `==`, when checking that a frozen spec
-reproduces its source.
+reproduces its own source.
 
 Each of these is documented in its own function's docstring; this page
-exists so a reader migrating from R or Python sees all three in one
-place, once, rather than discovering them one at a time.
+exists so that a reader migrating from R or Python sees all three
+together, once, rather than discovering them one at a time.
 
 ---
 
