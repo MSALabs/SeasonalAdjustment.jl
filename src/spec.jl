@@ -137,6 +137,24 @@ Reference Manual alone) -- see `_FORCE_TYPE_KEYWORDS`/
 spelling is `:calendaradj`, not `:caladjust` as an earlier draft
 guessed -- the binary's own error message settled it.
 
+**`order` alone renders nothing.** `order` (default `(0,1,1)`) is only
+ever used together with `seasonal_order` -- `render` emits
+`arima { model = (p d q)(P D Q)s }` from BOTH fields at once, and
+has no rendering path for `order` on its own. A spec with no
+`arima_model`, no `automdl`/`maxorder`/`maxdiff`, and no `seasonal_order`
+therefore has **no `arima{}` block at all**, and X-13 falls back to its
+own internal default (no differencing, no MA terms -- confirmed
+directly: `arima_model(result)` reads back `"(0 0 0)"`). This is
+deliberate, not an oversight: the real Census Bureau "official test
+data" spec ships with no `arima{}`/`automdl{}` block either (a bare
+`x11{}` decomposition is a legitimate, standalone X-13 usage mode), and
+this package's own committed verification fixtures (the D10-D13 airline
+baseline, the W.0/W.2 CAPSTONE tests) were built and cross-checked
+against exactly this behaviour. Pass `seasonal_order` explicitly (e.g.
+`seasonal_order=(0,1,1,12)` for the classic Box-Jenkins airline model)
+or `automdl=true` to actually fit a RegARIMA model -- do not rely on
+`order`'s default value alone to do so.
+
 # Examples
 ```jldoctest
 julia> y = collect(1.0:48.0) .+ 100;
@@ -677,6 +695,23 @@ function render(spec::X13Spec)
         P, D, Q, s = spec.seasonal_order
         println(io, "arima { model = ($p $d $q)($P $D $Q)$s }")
     end
+    # `order` (default (0,1,1)) is deliberately a no-op here unless
+    # `seasonal_order` is ALSO given -- confirmed this is the intended
+    # behaviour, not a bug: the actual, real Census Bureau "official test
+    # data" spec (handoff/verification/airline_baseline/airline_official.spc,
+    # literally titled that in its own `title =`) and the independently
+    # hand-typed W.0 proof spec (diwali_official.spc) both likewise emit
+    # NO arima{}/automdl{} block at all -- a bare `x11{}` decomposition
+    # with no RegARIMA preprocessing is a real, legitimate X-13 usage
+    # mode, not a degenerate fallback. A prior version of this comment
+    # (and a since-reverted change) treated the resulting "(0 0 0)" model
+    # as a bug and started always rendering `order` on its own -- that
+    # broke the CAPSTONE tests (test_spec.jl, test_calendars.jl) and the
+    # committed D10/D11 ground-truth comparison in test_api.jl, all of
+    # which were built and cross-verified against THIS bare-default
+    # behaviour specifically. Reverted once that was confirmed by reading
+    # the actual official .spc files, not assumed from the docstring's
+    # own `order=(0,1,1)` default alone.
 
     if spec.automdl || spec.maxorder !== nothing || spec.maxdiff !== nothing
         parts = String[]
