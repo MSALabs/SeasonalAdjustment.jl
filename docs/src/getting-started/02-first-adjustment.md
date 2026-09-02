@@ -7,7 +7,7 @@ CurrentModule = SeasonalAdjustment
 ## The series
 
 The package ships a few datasets, so nothing in this guide depends on
-data you have to find first.
+data that must first be found elsewhere.
 
 ```jldoctest
 julia> using SeasonalAdjustment
@@ -20,7 +20,7 @@ julia> datasets()
  "iip_india"
 ```
 
-We want the first one.
+The first of these is wanted here.
 
 ```jldoctest
 julia> using SeasonalAdjustment
@@ -33,12 +33,13 @@ julia> length(d.value), first(d.date), last(d.date)
 
 Monthly totals of international airline passengers, January 1949 to
 December 1960, in thousands. Box and Jenkins used it in *Time Series
-Analysis: Forecasting and Control* and it's been the standard example
-ever since. It appears throughout the seasonal adjustment literature
-and in this package's own verification corpus. If you've read anything
-at all about seasonal adjustment, you've seen this series.
+Analysis: Forecasting and Control*, and it has been the standard
+example ever since. It appears throughout the seasonal adjustment
+literature and in this package's own verification corpus. Anyone who
+has read anything at all about seasonal adjustment will have seen this
+series before.
 
-Where it came from, and whether you may republish a chart of it:
+Where it came from, and whether a chart of it may be republished:
 
 ```julia
 dataset_info("airline")
@@ -57,17 +58,17 @@ International airline passengers ("airline")
               Analysis: Forecasting and Control. Holden-Day. Series G.
 ```
 
-Every dataset carries its source, licence and citation. That's
+Every dataset carries its source, licence and citation. This is
 deliberate: a figure in a paper needs an attribution line, and guessing
-at one is worse than looking it up. `iip_india` is the one exception
-worth knowing about up front — its own `dataset_info` says plainly that
-its exact redistribution terms weren't independently re-verified when
-it was bundled, so check `dataset_info("iip_india")` before republishing
-anything built from it.
+at one is worse than simply looking it up. `iip_india` is the one
+exception worth knowing about up front — its own `dataset_info` states
+plainly that its exact redistribution terms were not independently
+re-verified at the time it was bundled, so kindly check
+`dataset_info("iip_india")` before republishing anything built from it.
 
 [`dataset`](@ref) returns a `NamedTuple` of `date` and `value`, which
-happens to be a valid Tables.jl table. So if you'd rather have something
-else:
+happens to be a valid Tables.jl table. So should something else be
+preferred:
 
 ```julia
 using DataFrames
@@ -75,20 +76,21 @@ dataset("airline", DataFrame)
 ```
 
 Any Tables.jl sink works: `DataFrame`, `TSFrame`, `Tables.rowtable`,
-`Tables.matrix`, or anything else that accepts a table.
+`Tables.matrix`, or indeed anything else that accepts a table.
 
-The airline series is a good first example because everything it does,
-it does clearly.
+The airline series makes for a good first example, in that everything
+it does, it does clearly.
 
 ![Airline passengers, 1949-1960](../assets/gs01-airline-raw.png)
 
 **Figure 2.1.** Two things are visible immediately. The series trends
 upward, roughly doubling and then doubling again. And within each year
-there's a repeating shape, peaking in summer, with a smaller bump in
-December. The yearly shape is not constant in size: the summer peak in
-1960 is far larger in absolute terms than the one in 1949.
+there is a repeating shape, peaking in summer, with a smaller bump in
+December. The yearly shape is not constant in size, either: the summer
+peak in 1960 is far larger in absolute terms than the one in 1949.
 
-That last point turns out to matter, and section 4 returns to it.
+That last point turns out to matter, and section 4 returns to it in
+due course.
 
 ## Adjusting it
 
@@ -96,34 +98,34 @@ That last point turns out to matter, and section 4 returns to it.
 res = x13(dataset("airline"))
 ```
 
-One call, and no `start` argument. The dataset carries its dates, and
-[`x13`](@ref) reads them to work out that the series begins in January
-1949.
+One call, and no `start` argument required. The dataset carries its
+own dates, and [`x13`](@ref) reads these to work out that the series
+begins in January 1949.
 
-For your own data you'd say so explicitly:
+For one's own data, this would instead be stated explicitly:
 
 ```julia
 res = x13(y; start = (1949, 1))                # y a plain Vector, monthly
 res = x13(y; start = (1990, 1), period = 4)    # quarterly
 ```
 
-The result is an [`X13Result`](@ref). Four series come back, each a
-field:
+The result is an [`X13Result`](@ref). Four series come back, each its
+own field:
 
 | Field | X-11 table | What it is |
 |---|---|---|
 | `seasonally_adjusted` | D11 | the series with the seasonal pattern removed |
 | `trend` | D12 | the smooth underlying trend-cycle |
 | `seasonal_factors` | D10 | the estimated seasonal pattern itself |
-| `irregular` | D13 | what's left over |
+| `irregular` | D13 | what is left over |
 
 Plus `residuals` from the regARIMA model, and `udg`, the binary's own
-diagnostics dump, which section 3 uses heavily.
+diagnostics dump, which section 3 makes heavy use of.
 
-The X-11 table names in that middle column will keep appearing. They
-are how the X-13 documentation and every statistical office refer to
-these series, so the package keeps them visible rather than hiding them
-behind Julia names alone.
+The X-11 table names in that middle column will keep appearing
+throughout. They are how the X-13 documentation, and every statistical
+office, refer to these series, so the package keeps them visible
+rather than hiding them behind Julia names alone.
 
 ## Looking at it
 
@@ -135,13 +137,14 @@ plot(res)
 
 **Figure 2.2.** The original series and the adjusted one, overlaid. The
 summer peaks and winter troughs are gone. What remains still rises, and
-still wobbles, but the wobbles are no longer the calendar.
+still wobbles, but the wobbles are no longer the calendar's doing.
 
-This is the chart to look at first, every time. If the adjusted line
-doesn't look like a sensible version of the original with the yearly
-rhythm taken out, nothing further is worth checking.
+This is the chart worth looking at first, every time. Should the
+adjusted line not look like a sensible version of the original with
+the yearly rhythm taken out, nothing further is worth checking just
+yet.
 
-For the components separately:
+For the components taken separately:
 
 ```julia
 plot(res; panels = :components)
@@ -150,16 +153,17 @@ plot(res; panels = :components)
 ![Four-panel decomposition](../assets/gs03-components.png)
 
 **Figure 2.3.** Observed, seasonally adjusted, trend, and irregular. The
-trend panel is the adjusted series smoothed further. The irregular
-panel is what neither the trend nor the seasonal pattern explains, and
-on a well-behaved series it should look like noise around 1.0.
+trend panel is the adjusted series smoothed further still. The
+irregular panel is what neither the trend nor the seasonal pattern
+explains, and on a well-behaved series it ought to look like noise
+around 1.0.
 
 ## What actually happened — and what this bare call did *not* do
 
-It's tempting to assume the single call above did everything X-13 can
-do automatically: tested the transform, searched for an ARIMA model,
-checked for outliers. **It didn't** — and checking that honestly is a
-better first lesson than assuming it.
+It is tempting to assume the single call above did everything X-13 is
+capable of doing automatically: tested the transform, searched for an
+ARIMA model, checked for outliers. **It did not** — and checking that
+honestly is a better first lesson than simply assuming it.
 
 ```julia
 transformfunction(res), arima_model(res)
@@ -170,13 +174,14 @@ transformfunction(res), arima_model(res)
 ```
 
 No transform was tested (`transformfunction` returns `:none`, not
-because X-13 tried logs and rejected them, but because nothing was
-asked for), and no real ARIMA model was fit — `(0 0 0)` is X-13's own
-trivial fallback when neither an explicit model nor `automdl` is
-requested. The adjustment in Figures 2.2–2.3 still ran (X-11's own
-filtering doesn't need a fitted regARIMA model to decompose a series),
-but this bare call is the "nothing turned on" baseline, not the
-"X-13 doing its usual automatic work" case.
+because X-13 tried logs and rejected them, but because nothing of the
+kind was asked for), and no real ARIMA model was fit — `(0 0 0)` is
+X-13's own trivial fallback whenever neither an explicit model nor
+`automdl` is requested. The adjustment shown in Figures 2.2–2.3 still
+ran regardless (X-11's own filtering does not need a fitted regARIMA
+model in order to decompose a series), but this bare call amounts to
+the "nothing turned on" baseline, not the case of "X-13 doing its usual
+automatic work."
 
 ```julia
 filters(res)
@@ -188,12 +193,12 @@ filters(res)
 ```
 
 [`filters`](@ref) reports the seasonal moving average X-11 chose for
-each calendar month (its own default, `MSR`, here), the trend filter
-length, and the decomposition mode — X-11 still defaults to a
-multiplicative decomposition even though no transform was tested at the
-regARIMA stage; the two are separate choices. X-11 selects these from
-properties of the data rather than applying fixed defaults, and
-section 4 shows how to override them.
+each calendar month (its own default, `MSR`, in this case), the trend
+filter length, and the decomposition mode — X-11 still defaults to a
+multiplicative decomposition even though no transform was tested at
+the regARIMA stage; the two are separate choices entirely. X-11
+selects these from properties of the data itself rather than applying
+fixed defaults, and section 4 shows how these may be overridden.
 
 And the whole specification at once:
 
@@ -203,17 +208,17 @@ static(res)
 
 [`static`](@ref) resolves every automatic decision into an explicit
 specification — here, since nothing was automatic to begin with, it
-mostly just echoes the bare defaults back (`arima_model="(0 0 0)"`,
+largely just echoes the bare defaults back (`arima_model="(0 0 0)"`,
 `transform` left at `:none`, no outliers to list). It becomes genuinely
-useful once automatic selection is actually turned on, which is where
-section 3 picks up.
+useful once automatic selection is actually switched on, which is
+where section 3 takes up the thread.
 
 ## Before moving on
 
-You have an adjusted series and you have not yet checked a single thing
-about whether it's any good — and, as the section above shows, you
-haven't yet asked X-13 to do its usual automatic work either. That's the
-subject of the next chapter, and it's not optional. Seasonal adjustment
-fails quietly. A bad adjustment produces a smooth, plausible-looking
-line that happens to be wrong, and nothing about Figure 2.2 would tell
-you.
+An adjusted series is now in hand, and not a single thing about
+whether it is any good has yet been checked — and, as the section
+above shows, X-13 has not even been asked to do its usual automatic
+work either. That is the subject of the next chapter, and it is not
+optional. Seasonal adjustment fails quietly. A bad adjustment produces
+a smooth, plausible-looking line that happens to be wrong, and nothing
+about Figure 2.2 would give that away.
